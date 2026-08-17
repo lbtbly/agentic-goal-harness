@@ -269,11 +269,11 @@ treeAgents.sort((a, b) => (a.st || 0) - (b.st || 0))
 const fmtDur = ms => { if (!ms || ms < 0) return ''; const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` }
 const kids = id => treeAgents.filter(a => a.parent === id)
 const renderNode = a =>
-  `<div class="tnode"><span class="tdot${a.live ? ' on' : ''}"></span><span class="tag">${esc(a.type)}</span><span class="tds">${esc(trunc(a.desc, 64))}</span><span class="tdu">${a.live ? 'running' : fmtDur((a.en || 0) - (a.st || a.en || 0))}</span></div>`
+  `<div class="tnode${a.live ? ' on' : ''}"><span class="tdot${a.live ? ' on' : ''}"></span><span class="tag">${esc(a.type)}</span><span class="tds">${esc(trunc(a.desc, 64))}</span><span class="tdu">${a.live ? 'running' : fmtDur((a.en || 0) - (a.st || a.en || 0))}</span></div>`
   + kids(a.id).map(k => `<div class="tkid">${renderNode(k)}</div>`).join('')
 const roots = treeAgents.filter(a => !a.parent)
 const TREE_MAX = 12
-const shownRoots = roots.slice(-TREE_MAX)
+const shownRoots = [...roots.filter(a => a.live), ...roots.filter(a => !a.live)].slice(0, TREE_MAX)
 const treeOmitted = roots.length - shownRoots.length
 const treeHtml = shownRoots.map(renderNode).join('\n    ')
 
@@ -444,8 +444,10 @@ position:relative;top:.05rem}
 .tdot.on{background:var(--accent)}
 @media (prefers-reduced-motion:no-preference){
 .tdot.on{animation:pulse 1.6s ease-in-out infinite}}
-.tnode .tds{font-size:.7rem;color:var(--ink);opacity:.85;white-space:nowrap;
+.tnode .tds{font-size:.7rem;color:var(--muted);white-space:nowrap;
 overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.tnode.on .tds{color:var(--ink)}
+.tnode.on .tag{color:var(--ink)}
 .tnode .tdu{font:400 .62rem/1.5 var(--mono);color:var(--muted);flex:none}
 .tkid{margin-left:1.3rem}
 .shots{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:.5rem;flex:1;min-height:0}

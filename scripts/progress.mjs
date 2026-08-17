@@ -129,13 +129,14 @@ walk('tests/screenshots', 1); walk('launch/screenshots', 1); walk('test-results'
 for (const m of evidence.matchAll(/[\w./-]+\.(?:png|jpe?g|webp)/gi)) if (existsSync(m[0])) shots.push(m[0])
 const latest = [...new Set(shots)]
   .map(p => { try { return { p, t: statSync(p).mtimeMs } } catch { return null } })
-  .filter(Boolean).sort((a, b) => b.t - a.t).slice(0, 6)
+  .filter(Boolean).sort((a, b) => b.t - a.t).slice(0, 60)
 
 // Test runners wipe and rewrite their output directories mid-run, which
 // leaves the board pointing at deleted files between renders. Copy the
-// chosen captures into .forge/shots/ and reference the copies: stable
-// names per source path, source mtimes preserved so newest-first stays
-// truthful, stale copies pruned.
+// captures into .forge/shots/ and reference the copies: stable names per
+// source path, source mtimes preserved so newest-first stays truthful,
+// stale copies pruned. Child-relative paths only: Safari refuses to load
+// subresources from a local page's parent directories.
 const hash = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16) }
 try {
   mkdirSync('.forge/shots', { recursive: true })
@@ -156,7 +157,9 @@ try {
   }
   for (const f of readdirSync('.forge/shots')) if (!keep.has(f)) { try { unlinkSync(join('.forge/shots', f)) } catch {} }
 } catch {}
-const showable = latest.filter(s => s.copy)
+const gallery = latest.filter(s => s.copy)
+const showable = gallery.slice(0, 6)
+const galleryJson = JSON.stringify(gallery.map(s => ({ s: s.copy, c: s.p }))).replace(/</g, '\\u003c')
 
 const stackLine = (plan.match(/^\*{0,2}Stack[:*]*\s*(.+)$/mi) || greenlight.match(/^Stack:\s*(.+)$/mi) || [, ''])[1]
 
@@ -333,8 +336,13 @@ footer span{overflow:hidden;text-overflow:ellipsis}
 footer .d{display:inline-block;width:6px;height:6px;border-radius:50%;
 background:var(--accent);margin-right:.4rem;vertical-align:baseline}
 .lb{position:fixed;inset:0;display:none;background:rgb(0 0 0 / .6);z-index:9;
-align-items:center;justify-content:center;padding:2.5rem;cursor:pointer}
+align-items:center;justify-content:center;gap:1rem;padding:1.5rem;cursor:pointer}
 .lb.open{display:flex}
+.lb .nav{flex:none;width:2.6rem;height:2.6rem;border-radius:50%;cursor:pointer;
+background:var(--raised);color:var(--ink);border:1px solid var(--line);
+font:400 1.4rem/1 var(--sans);display:flex;align-items:center;justify-content:center}
+.lb .nav:hover{background:#2E2E2E}
+.lb figure{cursor:default}
 .lb figure{max-width:92vw;max-height:92vh;background:var(--surface);
 border:1px solid var(--line);border-radius:10px;overflow:hidden;
 box-shadow:0 8px 32px rgb(0 0 0 / .7);display:flex;flex-direction:column;min-height:0}
@@ -413,9 +421,9 @@ h1{white-space:normal}
   </div>
 
   <div class="panel">
-    <div class="lbl">Latest captures</div>
+    <div class="lbl">Latest captures${gallery.length > showable.length ? ` · ${showable.length} of ${gallery.length}, all in the popin` : ''}</div>
     ${showable.length ? `<div class="shots">
-    ${showable.map(s => `<figure data-full="${esc(s.copy)}" data-cap="${esc(s.p)}"><img src="${esc(s.copy)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
+    ${showable.map((s, i) => `<figure data-i="${i}"><img src="${esc(s.copy)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
     </div>` : '<p class="empty">Captures appear as the build starts producing screenshots.</p>'}
   </div>
 </main>
@@ -425,16 +433,35 @@ h1{white-space:normal}
   <span><span class="d"></span>estimate: gate 20 + rubric 80, evidence at half weight · tokens sum every session transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>
 </footer>
 
-<div class="lb"><figure><img alt=""><figcaption></figcaption></figure></div>
+<div class="lb">
+  <button class="nav prev" aria-label="previous capture">&#8249;</button>
+  <figure><img alt=""><figcaption></figcaption></figure>
+  <button class="nav next" aria-label="next capture">&#8250;</button>
+</div>
 <script>
-setInterval(function(){if(!document.querySelector('.lb.open'))location.reload()},15000)
+var G=${galleryJson},gi=0
+var lb=document.querySelector('.lb')
+function show(i){
+  if(!G.length)return
+  gi=((i%G.length)+G.length)%G.length
+  lb.querySelector('img').src=G[gi].s
+  lb.querySelector('figcaption').textContent=(gi+1)+' / '+G.length+' · '+G[gi].c
+  lb.classList.add('open')
+}
+setInterval(function(){if(!lb.classList.contains('open'))location.reload()},15000)
 document.addEventListener('click',function(e){
-  var lb=document.querySelector('.lb')
   var f=e.target.closest('.shots figure')
-  if(f){lb.querySelector('img').src=f.dataset.full
-    lb.querySelector('figcaption').textContent=f.dataset.cap
-    lb.classList.add('open');return}
+  if(f){show(+f.dataset.i);return}
+  if(e.target.closest('.lb .prev')){show(gi-1);return}
+  if(e.target.closest('.lb .next')){show(gi+1);return}
+  if(e.target.closest('.lb figure'))return
   lb.classList.remove('open')
+})
+document.addEventListener('keydown',function(e){
+  if(!lb.classList.contains('open'))return
+  if(e.key==='Escape')lb.classList.remove('open')
+  else if(e.key==='ArrowLeft')show(gi-1)
+  else if(e.key==='ArrowRight')show(gi+1)
 })
 </script>
 </body></html>

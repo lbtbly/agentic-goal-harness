@@ -199,6 +199,16 @@ try {
     else {
       const sub = join(projDir, f, 'subagents')
       try { for (const g of readdirSync(sub)) if (g.endsWith('.jsonl')) files.push({ p: join(sub, g), k: `${f}/${g}` }) } catch {}
+      const wsub = join(sub, 'workflows')
+      try {
+        for (const wd of readdirSync(wsub)) {
+          try {
+            for (const g of readdirSync(join(wsub, wd)))
+              if (g.startsWith('agent-') && g.endsWith('.jsonl'))
+                files.push({ p: join(wsub, wd, g), k: `${f}/wf/${wd}/${g}` })
+          } catch {}
+        }
+      } catch {}
     }
   }
   const cachePath = '.forge/.progress-tokens.json'
@@ -289,6 +299,42 @@ try {
   }
 } catch {}
 treeAgents.sort((a, b) => (a.st || 0) - (b.st || 0))
+// Workflow runs live beside the subagents: <session>/workflows/wf_*.json
+// holds the run metadata and script (whose meta block names it), and
+// <session>/subagents/workflows/<runId>/ holds that run's agent transcripts.
+const wfMap = {}
+try {
+  for (const sd of readdirSync(projDir)) {
+    const wdir = join(projDir, sd, 'workflows')
+    if (!existsSync(wdir)) continue
+    for (const f of readdirSync(wdir)) {
+      if (!f.startsWith('wf_') || !f.endsWith('.json')) continue
+      let w; try { w = JSON.parse(readFileSync(join(wdir, f), 'utf8')) } catch { continue }
+      const id = w.runId || f.replace(/\.json$/, '')
+      const name = ((w.script || '').match(/name:\s*'([^']+)'/) || [, 'workflow'])[1]
+      const adir = join(projDir, sd, 'subagents', 'workflows', id)
+      let total = 0, liveN = 0, en = Date.parse(w.timestamp) || 0
+      try {
+        for (const g of readdirSync(adir)) {
+          if (g.endsWith('.meta.json')) total++
+          else if (g.startsWith('agent-') && g.endsWith('.jsonl')) {
+            const mt = statSync(join(adir, g)).mtimeMs
+            if (mt > en) en = mt
+            if (Date.now() - mt < 120000) liveN++
+          }
+        }
+      } catch {}
+      const cur = wfMap[id]
+      if (!cur || total > cur.total) wfMap[id] = { id, name, st: Date.parse(w.timestamp) || null, en, live: liveN > 0, liveN, total }
+    }
+  }
+} catch {}
+const workflows = Object.values(wfMap)
+for (const w of workflows) {
+  w.tok = Object.entries(tokCache).filter(([k]) => k.includes(`/wf/${w.id}/`))
+    .reduce((a, [, c]) => a + (c.tok || 0), 0)
+}
+
 const fmtDur = ms => { if (!ms || ms < 0) return ''; const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` }
 const fmtTok = t => t >= 1e6 ? `${(t / 1e6).toFixed(1)}M` : t >= 1000 ? `${Math.round(t / 1e3)}k` : `${t}`
 const shortModel = m => m.replace(/^claude-/, '').replace(/-\d{6,}$/, '')
@@ -297,13 +343,19 @@ const kids = id => treeAgents.filter(a => a.parent === id)
 const renderNode = a =>
   `<div class="tnode${a.live ? ' on' : ''}" title="${a.live ? 'running' : `ran ${fmtDur((a.en || 0) - (a.st || a.en || 0))}`}"><span class="tdot${a.live ? ' on' : ''}"></span><span class="tag">${esc(a.type)}</span><span class="tds">${esc(trunc(a.desc, 48))}</span>${a.model ? `<span class="tmk">${esc(shortModel(a.model))}</span>` : ''}${a.tok ? `<span class="tmk">${fmtTok(a.tok)}</span>` : ''}<span class="tdu">${a.live ? 'running' : a.en ? hhmm(a.en) : ''}</span></div>`
   + kids(a.id).map(k => `<div class="tkid">${renderNode(k)}</div>`).join('')
+const wfRow = w =>
+  `<div class="tnode${w.live ? ' on' : ''}"><span class="tdot${w.live ? ' on' : ''}"></span><span class="tag">workflow</span><span class="tds">${esc(w.name)} · ${w.total} agent(s)${w.liveN ? ` · ${w.liveN} running` : ''}</span>${w.tok ? `<span class="tmk">${fmtTok(w.tok)}</span>` : ''}<span class="tdu">${w.live ? 'running' : w.en ? hhmm(w.en) : ''}</span></div>`
 const roots = treeAgents.filter(a => !a.parent)
 const cutoff = Date.now() - 30 * 60000
-const recent = roots.filter(a => a.live || (a.en && a.en >= cutoff))
+const entries = [
+  ...workflows.map(w => ({ kind: 'wf', ...w })),
+  ...roots.map(a => ({ kind: 'ag', ...a })),
+].sort((a, b) => (a.st || 0) - (b.st || 0))
+const recent = entries.filter(x => x.live || (x.en && x.en >= cutoff))
 const TREE_MAX = 12
-const shownRoots = [...recent.filter(a => a.live), ...recent.filter(a => !a.live)].slice(0, TREE_MAX)
-const treeOmitted = roots.length - shownRoots.length
-const treeHtml = shownRoots.map(renderNode).join('\n    ')
+const shownRoots = [...recent.filter(x => x.live), ...recent.filter(x => !x.live)].slice(0, TREE_MAX)
+const treeOmitted = entries.length - shownRoots.length
+const treeHtml = shownRoots.map(x => x.kind === 'wf' ? wfRow(x) : renderNode(x)).join('\n    ')
 
 // Dispatch pulse: liveness, rhythm, and who did the work. RUNLOG records
 // stops, so "last activity" is the time since any agent last finished.
@@ -334,8 +386,10 @@ if (runEntries.length) {
     `<div class="bar${i === lastIdx && agoMin !== null && agoMin <= bucketMin * 1.5 ? ' hot' : ''}" style="height:${c ? Math.max(14, Math.round(c / max * 100)) : 4}%"></div>`
   ).join('')
 }
+const wfAgentTotal = workflows.reduce((a, w) => a + w.total, 0)
 const seatChips = Object.entries(typeCounts).sort((x, y) => y[1] - x[1])
   .map(([k, n]) => `<span class="chip">${esc(k)} <b>&times;${n}</b></span>`).join('\n    ')
+  + (wfAgentTotal ? `\n    <span class="chip">workflow agents <b>&times;${wfAgentTotal}</b></span>` : '')
   + (anonStops ? `\n    <span class="chip">helper stops <b>&times;${anonStops}</b></span>` : '')
 
 const footerA = `<span class="mi"><span class="d"></span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page.</span>`
@@ -629,8 +683,8 @@ h1{white-space:normal}
   </div>
 
   <div class="panel disp">
-    <div class="phead"><span class="lbl"><span class="live ${liveCls}"></span>Dispatches · ${treeAgents.length} agent(s) · ${runEntries.length} stop(s) · last ${agoTxt}</span><div class="spark">${sparkBars}</div></div>
-    ${treeAgents.length ? `<div class="troot">lead · the session${treeOmitted > 0 ? ` · ${treeOmitted} agent(s) finished more than 30 min ago, hidden` : ''}</div>
+    <div class="phead"><span class="lbl"><span class="live ${liveCls}"></span>Dispatches · ${treeAgents.length} agent(s)${workflows.length ? ` · ${workflows.length} workflow(s)` : ''} · ${runEntries.length} stop(s) · last ${agoTxt}</span><div class="spark">${sparkBars}</div></div>
+    ${treeAgents.length || workflows.length ? `<div class="troot">lead · the session${treeOmitted > 0 ? ` · ${treeOmitted} finished more than 30 min ago, hidden` : ''}</div>
     <div class="tree">
     ${treeHtml}
     </div>

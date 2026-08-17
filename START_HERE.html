@@ -550,14 +550,17 @@ tmux new -s forge
 claude
 # detach: Ctrl+B then D    reattach later: tmux attach -t forge</code></pre>
 <p>Watching a run: open <code>.forge/PROGRESS.html</code> in any browser
-tab. It shows the pipeline as a timeline (done, active, skipped, pending),
-the slices, every rubric line in one of three states (open, evidence
-recorded by the builder, verified by the verifier), the latest captures,
-the evidence feed, and the dispatch log. The hooks regenerate it after
+tab. It is a wallboard built to fill one screen with no scrolling and no
+mouse: an overall completion estimate (gate work is 20 points, rubric
+lines the other 80, an evidence-recorded line counting half a verified
+one, and only shipping reads 100), the pipeline as a horizontal stepper
+with the slices under it, rubric health per section in three states (open,
+evidence recorded by the builder, verified by the verifier), the evidence
+and dispatch feeds, and the latest captures. The hooks regenerate it after
 every subagent stop, checkpoint, and evidence line, and the page reloads
-itself every 15 seconds, so a tab left open tracks the run with no server
-and no setup. It is drawn from the state files and never edited by hand;
-if the page and a file disagree, the file wins.</p>
+itself every 15 seconds, so a screen left on it tracks the run with no
+server and no setup. It is drawn from the state files and never edited by
+hand; if the page and a file disagree, the file wins.</p>
 <p>Checking on a run from your phone: if the repo pushes to GitHub, read
 <code>.forge/RESUME.md</code> and <code>.forge/RUNLOG.md</code> in the
 GitHub app. <code>GREENLIGHT.md</code> is written phone-sized for exactly

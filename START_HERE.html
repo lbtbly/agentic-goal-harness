@@ -233,7 +233,8 @@ judgment seats (designer, architect, verifier) inherit the session model, so
 this choice sets them too; reserve Fable 5 for goals that earn a flagship
 session. Do not use ultracode here: it opts the session into workflow
 orchestration, and an S goal like this one never uses a workflow. Save
-ultracode for opening L-sized build sessions.</p>
+ultracode for opening L-sized build sessions. Section 5 opens with the full
+profile table by size, with examples.</p>
 <p>Then, at the prompt:</p>
 <pre><code>/forge "a one-page site that shows the current moon phase"</code></pre>
 <p>What you will see, phase by phase:</p>
@@ -267,6 +268,38 @@ was built.</li>
 </ol>
 
 <h2 id="real-run">5. How a real run works</h2>
+
+<h3>Pick the session profile by expected size</h3>
+<p>The router rules on size at phase 2, but you choose the model and effort
+before typing <code>/forge</code>, and the judgment seats inherit that
+choice. Estimate the size with three questions: how many screens, does
+anything persist (accounts, stored data), and could independent workstreams
+run in parallel?</p>
+<table>
+<tr><th>Size</th><th>It looks like</th><th>Examples</th><th>Start the session with</th></tr>
+<tr><td>S</td><td>one feature, page, or utility; no accounts, no stored
+data; an evening of work</td><td>the moon-phase page; a unit converter; a
+landing page for an existing product</td><td><code>/model claude-opus-5</code>,
+<code>/effort xhigh</code></td></tr>
+<tr><td>M</td><td>a multi-screen product on one stack; accounts, data, a
+deploy target</td><td>a collectors app with lists and trades; a habit
+tracker with sync; a recipe box with search and tags</td><td>Opus 5 and
+xhigh on a standard day; Fable 5 and xhigh when the goal earns flagship
+judgment, taste-heavy or design-led</td></tr>
+<tr><td>L</td><td>independent workstreams that could run at once; multiple
+platforms; a migration alongside new features</td><td>web and mobile shipped
+together; a marketplace with buyer, seller, and payment flows; a rewrite of
+a live product while it keeps shipping</td><td>Opus 5 and xhigh, or Fable 5
+when the week can afford a flagship session; open the build phase in an
+ultracode session</td></tr>
+</table>
+<p>Two rules keep a wrong guess cheap. First, your estimate only sets who
+judges; the router's letter is the one that counts, and <code>/model</code>
+and <code>/effort</code> switch mid-session, so adjust at the greenlight if
+the router disagrees with you. An L verdict adds its own note there
+recommending ultracode for the build. Second, ultracode never opens an S or
+M run: it exists to orchestrate workflows at scale, which S never uses and M
+needs only for the lead-run persona panel.</p>
 
 <figure>
 <svg viewBox="0 0 360 700" role="img" aria-label="The forge pipeline, nine phases with the single human gate marked between plan and build">

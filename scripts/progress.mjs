@@ -105,7 +105,6 @@ if (active < 0) {
   })
 }
 if (active < 0) active = shipped ? 9 : armed ? 6 : dod ? 5 : brief ? 1 : 0
-if (shipped) active = 9
 const scoutSkipped = active > 2 && !/##\s*Research/i.test(brief)
 const designSkipped = active > 3 && !existsSync('.forge/DESIGN.md')
 const phaseState = i =>
@@ -114,11 +113,13 @@ const phaseState = i =>
 
 // Completion estimate. The gate work is worth 20 points; the rubric carries
 // the other 80, an evidence-recorded line counting half a verified one.
-// Capped at 99 until REPORT.md exists: only shipping is 100.
-const pct = shipped ? 100
-  : allLines.length
-    ? Math.min(99, Math.round(20 + 80 * (nVerified + 0.5 * nEvidence) / allLines.length))
-    : Math.min(20, Math.round(((Math.min(active, 5) + (armed ? 1 : 0)) / 6) * 20))
+// 100 exists only when every line is verified AND the report is written;
+// a report over unverified lines is not done, so it stays capped at 99.
+const verifiedAll = allLines.length > 0 && nVerified === allLines.length
+const pct = allLines.length
+  ? (verifiedAll && shipped ? 100
+    : Math.min(99, Math.round(20 + 80 * (nVerified + 0.5 * nEvidence) / allLines.length)))
+  : Math.min(20, Math.round(((Math.min(active, 5) + (armed ? 1 : 0)) / 6) * 20))
 
 // Latest captures.
 const shots = []
@@ -173,7 +174,8 @@ const firstTs = (runlog.match(/^(\d{4}-\d{2}-\d{2}T[\d:]+Z)/m) || evidence.match
 let durationTxt = ''
 if (firstTs) {
   const start = Date.parse(firstTs)
-  const end = shipped ? (() => { try { return statSync('.forge/REPORT.md').mtimeMs } catch { return Date.now() } })() : Date.now()
+  const frozen = shipped && allLines.length > 0 && !dod.includes('- [ ]')
+  const end = frozen ? (() => { try { return statSync('.forge/REPORT.md').mtimeMs } catch { return Date.now() } })() : Date.now()
   const mins = Math.max(0, Math.round((end - start) / 60000))
   durationTxt = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`
 }
@@ -225,12 +227,41 @@ const evTail = evidenceLines.slice(-7).reverse().map(l => {
   const m = l.match(/^(\S+) \| (\S+) \| (.*)$/)
   return m ? { t: m[1].slice(11, 16), id: m[2], txt: m[3] } : { t: '', id: '', txt: l }
 })
-const logTail = runlog.trim() ? runlog.trim().split('\n').slice(-5).reverse().map(l => {
-  const m = l.match(/^(\S+) \| (\S+) \| (.*)$/)
-  return m ? { t: m[1].slice(11, 16), id: m[2], txt: m[3] } : { t: '', id: '', txt: l }
-}) : []
+// Dispatch pulse: liveness, rhythm, and who did the work. RUNLOG records
+// stops, so "last activity" is the time since any agent last finished.
+const runEntries = runlog.trim() ? runlog.trim().split('\n').map(l => {
+  const m = l.match(/^(\S+) \| (\S+) \|/)
+  return m ? { t: Date.parse(m[1]), a: m[2] } : null
+}).filter(e => e && !isNaN(e.t)) : []
+const SEATS = ['router', 'scout', 'designer', 'architect', 'builder', 'verifier', 'finisher']
+const seatCounts = {}
+for (const e of runEntries) {
+  const k = SEATS.includes(e.a) ? e.a : 'helpers'
+  seatCounts[k] = (seatCounts[k] || 0) + 1
+}
+const lastT = runEntries.length ? Math.max(...runEntries.map(e => e.t)) : 0
+const agoMin = lastT ? Math.max(0, Math.round((Date.now() - lastT) / 60000)) : null
+const agoTxt = agoMin === null ? '' : agoMin < 1 ? 'just now'
+  : agoMin < 60 ? `${agoMin}m ago` : `${Math.floor(agoMin / 60)}h ${String(agoMin % 60).padStart(2, '0')}m ago`
+const liveCls = agoMin === null ? '' : agoMin <= 5 ? 'ok' : agoMin <= 30 ? 'warn' : ''
+const NB = 28
+let sparkBars = ''
+if (runEntries.length) {
+  const t0 = Math.min(...runEntries.map(e => e.t))
+  const span = Math.max(1, Date.now() - t0)
+  const buckets = Array(NB).fill(0)
+  for (const e of runEntries) buckets[Math.min(NB - 1, Math.floor((e.t - t0) / span * NB))]++
+  const max = Math.max(...buckets, 1)
+  const lastIdx = buckets.reduce((a, c, i) => c ? i : a, -1)
+  const bucketMin = span / NB / 60000
+  sparkBars = buckets.map((c, i) =>
+    `<div class="bar${i === lastIdx && agoMin !== null && agoMin <= bucketMin * 1.5 ? ' hot' : ''}" style="height:${c ? Math.max(14, Math.round(c / max * 100)) : 4}%"></div>`
+  ).join('')
+}
+const seatChips = [...SEATS, 'helpers'].filter(k => seatCounts[k])
+  .map(k => `<span class="chip">${k} <b>&times;${seatCounts[k]}</b></span>`).join('\n    ')
 
-const footerItem = `<span class="mi"><span class="d"></span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page. · estimate: gate 20 + rubric 80, evidence at half weight · tokens sum every session transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>`
+const footerItem = `<span class="mi"><span class="d"></span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page. · estimate: gate 20 + rubric 80, evidence at half weight, 100 only when every line is verified and the report exists · tokens sum every session transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>`
 
 const html = `<!DOCTYPE html>
 <html lang="en">
@@ -339,6 +370,15 @@ border:1px solid var(--line);border-radius:6px;padding:2px 6px;flex:none;margin-
 .feed .tx{font-size:.7rem;color:var(--ink);opacity:.85;overflow:hidden;
 display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .gap{margin-top:.7rem}
+.live{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;
+background:var(--line);margin-right:.4rem;vertical-align:baseline}
+.live.ok{background:var(--accent)}.live.warn{background:var(--warn)}
+.spark{display:flex;align-items:flex-end;gap:2px;height:2.1rem;margin:.35rem 0 .55rem}
+.spark .bar{flex:1;min-width:2px;background:var(--raised);border-radius:1px}
+.spark .bar.hot{background:var(--accent)}
+.seats{display:flex;flex-wrap:wrap;gap:.35rem}
+.seats .chip{font-size:.62rem}
+.seats .chip b{color:var(--ink);font-weight:500}
 .shots{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:.5rem;flex:1;min-height:0}
 .shots figure{overflow:hidden;border-radius:6px;border:1px solid var(--line);
 position:relative;min-height:0;cursor:pointer;background:var(--raised)}
@@ -410,9 +450,10 @@ h1{white-space:normal}
   <div class="id">
     <h1>${esc(goal || 'Forge run')}</h1>
     <div class="chips">
-    ${shipped ? '<span class="chip chip--ok"><span class="d"></span>shipped</span>'
+    ${shipped && verifiedAll ? '<span class="chip chip--ok"><span class="d"></span>shipped</span>'
       : armed ? '<span class="chip chip--ok"><span class="d"></span>gate active</span>'
       : '<span class="chip">pre-greenlight</span>'}
+    ${shipped && !verifiedAll ? '<span class="chip">report written · verify pending</span>' : ''}
     ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open</span>` : ''}
     ${stackLine ? `<span class="chip">${esc(trunc(stackLine, 58))}</span>` : ''}
     </div>
@@ -468,9 +509,10 @@ h1{white-space:normal}
     <div class="feed" style="flex:1">
     ${evTail.map(r => `<div class="row"><span class="t">${esc(r.t)}</span><span class="tag">${esc(r.id)}</span><span class="tx">${esc(r.txt)}</span></div>`).join('\n    ')}
     </div>` : '<p class="empty">No evidence recorded yet.</p>'}
-    ${logTail.length ? `<div class="lbl gap">Dispatches</div>
-    <div class="feed">
-    ${logTail.map(r => `<div class="row"><span class="t">${esc(r.t)}</span><span class="tag">${esc(trunc(r.id, 14))}</span><span class="tx">${esc(r.txt)}</span></div>`).join('\n    ')}
+    ${runEntries.length ? `<div class="lbl gap"><span class="live ${liveCls}"></span>Dispatches · ${runEntries.length} total · last ${agoTxt}</div>
+    <div class="spark">${sparkBars}</div>
+    <div class="seats">
+    ${seatChips}
     </div>` : ''}
   </div>
 

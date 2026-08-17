@@ -37,8 +37,9 @@ proceed on assumed answers. Do not ask anything else, now or later.
 ## 2. SIZE
 
 Delegate to the router agent. It returns S, M, or L plus one reason. Record it.
-- S: single feature or page, one evening of work. Skip phase 3. Phase 4 runs
-  designer-only when the done level leaves the machine.
+- S: single feature or page, one evening of work. Skip phase 3. Phase 4 is
+  proposed designer-only when the done level leaves the machine; the
+  greenlight decides.
 - M: a multi-screen product on one stack.
 - L: parallel streams or anything needing fan-out. Note for the user at the
   greenlight that an ultracode session is recommended for the build phase.
@@ -51,10 +52,12 @@ primary sources first. One page back, saved to .forge/BRIEF.md under Research.
 
 ## 4. DESIGN
 
-On S goals: no panel, no tournament. When the done level is deployed or
-beyond, dispatch the designer once with the brief and taste references for
-the key screen and tokens; a runs-locally S skips this phase, and the
-architect writes the direction card instead. Everything below is M and L.
+On S goals: no panel, no tournament, and the architect's direction card
+stands either way. When the done level is deployed or beyond, PLAN.md
+proposes one designer dispatch as the first build step, run after approval
+with the brief and taste references for the key screen and tokens. Plain
+approval keeps it; "approve, skip design" strikes it. A runs-locally S
+skips this phase entirely. Everything below is M and L.
 
 You, the lead, run the persona panel: build three personas from the research,
 then fan out one interviewer pass per persona (use the persona-panel workflow
@@ -88,7 +91,8 @@ exactly:
 
 Write .forge/GREENLIGHT.md, phone-sized: the stack in one line, the slice
 count, the three rubric lines most likely to be contentious, the Claude Design
-share link, and the /goal line to paste. The file states plainly: this is a
+share link, the proposed design step to keep or strike on deployed S goals,
+and the /goal line to paste. The file states plainly: this is a
 summary for approving away from the desk, never a replacement. Approving means
 the full rubric applies.
 

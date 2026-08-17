@@ -14,8 +14,8 @@ gate: the greenlight.
    slice. Never soften a rubric line to reach PASS.
 4. Simple stays simple. S-sized goals get one builder and one verifier. No
    scouts, no worktrees, no panels. The designer follows the done level, not
-   the size: any goal shipping beyond the local machine gets one designer
-   dispatch, no panel, no tournament.
+   the size: a goal shipping beyond the local machine is planned with one
+   designer dispatch, kept or struck at the greenlight.
 5. State is sacred. Every phase writes to .forge/ in the target project. The
    lead updates .forge/RESUME.md after every slice and every verdict.
 6. Evidence, never assertions. Nothing is checked off without a command output,

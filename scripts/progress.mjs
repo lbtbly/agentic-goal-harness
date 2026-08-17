@@ -4,7 +4,7 @@
 // Wallboard layout in the Dark Bench style (styles-library): matte graphite,
 // dotted canvas, one rationed green. Fills one screen, no scroll.
 // The state files stay the source of truth; this file only draws them.
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, mkdirSync, copyFileSync, utimesSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -125,12 +125,38 @@ const walk = (d, depth) => { try {
     else if (/\.(png|jpe?g|webp)$/i.test(f)) shots.push(p)
   }
 } catch {} }
-walk('tests/screenshots', 1); walk('launch/screenshots', 1)
-walk('.forge/shots', 1); walk('test-results', 3)
+walk('tests/screenshots', 1); walk('launch/screenshots', 1); walk('test-results', 3)
 for (const m of evidence.matchAll(/[\w./-]+\.(?:png|jpe?g|webp)/gi)) if (existsSync(m[0])) shots.push(m[0])
 const latest = [...new Set(shots)]
   .map(p => { try { return { p, t: statSync(p).mtimeMs } } catch { return null } })
   .filter(Boolean).sort((a, b) => b.t - a.t).slice(0, 6)
+
+// Test runners wipe and rewrite their output directories mid-run, which
+// leaves the board pointing at deleted files between renders. Copy the
+// chosen captures into .forge/shots/ and reference the copies: stable
+// names per source path, source mtimes preserved so newest-first stays
+// truthful, stale copies pruned.
+const hash = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16) }
+try {
+  mkdirSync('.forge/shots', { recursive: true })
+  const keep = new Set()
+  for (const s of latest) {
+    const name = `${hash(s.p)}-${s.p.split('/').pop()}`
+    const dst = join('.forge/shots', name)
+    keep.add(name)
+    try {
+      const src = statSync(s.p)
+      const cur = existsSync(dst) ? statSync(dst) : null
+      if (!cur || cur.size !== src.size || Math.abs(cur.mtimeMs - src.mtimeMs) > 1000) {
+        copyFileSync(s.p, dst)
+        utimesSync(dst, src.atime, src.mtime)
+      }
+      s.copy = `shots/${name}`
+    } catch { s.copy = null }
+  }
+  for (const f of readdirSync('.forge/shots')) if (!keep.has(f)) { try { unlinkSync(join('.forge/shots', f)) } catch {} }
+} catch {}
+const showable = latest.filter(s => s.copy)
 
 const stackLine = (plan.match(/^\*{0,2}Stack[:*]*\s*(.+)$/mi) || greenlight.match(/^Stack:\s*(.+)$/mi) || [, ''])[1]
 
@@ -234,20 +260,24 @@ background:var(--raised);color:var(--muted);border:1px solid var(--line)}
 border-radius:99px;overflow:hidden;display:flex}
 .pct .meter{margin-top:.4rem;width:10.5rem}
 .m-v{background:var(--accent)}.m-e{background:var(--warn)}
-.stepper{display:grid;grid-template-columns:repeat(9,1fr)}
-.step{text-align:center;position:relative;color:var(--muted);font-size:.7rem;padding-top:.05rem}
-.step::before{content:"";position:absolute;top:.42rem;right:50%;width:100%;height:1px;background:var(--line)}
+.stepper{display:grid;grid-template-columns:repeat(9,1fr);padding:.35rem 0 .1rem}
+.step{text-align:center;position:relative;color:var(--muted);
+font-size:1rem;font-weight:500;letter-spacing:-.01em}
+.step::before{content:"";position:absolute;top:.7rem;right:50%;width:100%;height:2px;background:var(--line)}
 .step:first-child::before{display:none}
-.step .dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--raised);
-border:1px solid var(--line);margin:0 auto .28rem;position:relative}
+.step .dot{width:1.1rem;height:1.1rem;border-radius:50%;background:var(--raised);
+border:2px solid var(--line);margin:0 auto .45rem;position:relative}
 .step.done{color:var(--ink)}.step.done .dot{background:var(--muted);border-color:var(--muted)}
-.step.active{color:var(--ink);font-weight:500}
+.step.done::before{background:var(--muted)}
+.step.active{color:var(--ink)}
 .step.active .dot{background:var(--accent);border-color:var(--accent)}
-.step.skipped .t{text-decoration:line-through}
+.step.active::before{background:var(--muted)}
+.step.skipped .t{text-decoration:line-through;font-weight:400}
 @media (prefers-reduced-motion:no-preference){
 .step.active .dot{animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}}
-.slices{display:flex;gap:.5rem;justify-content:center;margin-top:.5rem;overflow:hidden}
+.slices{display:flex;gap:.6rem;justify-content:center;margin-top:.6rem;overflow:hidden}
+.slices .chip{font-size:.7rem;padding:4px 10px}
 .slices .chip .d{background:var(--line)}
 .slices .sl-done{color:var(--ink)}.slices .sl-done .d{background:var(--muted)}
 .slices .sl-active{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
@@ -384,8 +414,8 @@ h1{white-space:normal}
 
   <div class="panel">
     <div class="lbl">Latest captures</div>
-    ${latest.length ? `<div class="shots">
-    ${latest.map(s => `<figure data-full="../${esc(s.p)}" data-cap="${esc(s.p)}"><img src="../${esc(s.p)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
+    ${showable.length ? `<div class="shots">
+    ${showable.map(s => `<figure data-full="${esc(s.copy)}" data-cap="${esc(s.p)}"><img src="${esc(s.copy)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
     </div>` : '<p class="empty">Captures appear as the build starts producing screenshots.</p>'}
   </div>
 </main>

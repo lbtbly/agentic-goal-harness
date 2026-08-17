@@ -17,9 +17,22 @@ every slice, and every verdict: last phase, current slice, next action.
 
 Ask the user with the AskUserQuestion tool, three questions only:
 1. Done level: runs locally | deployed live | deployed plus launch assets
-2. Hard constraints: platform, deadline, anything banned
+2. Hard constraints: platform, deadline, target market and jurisdiction,
+   anything banned
 3. Taste references: products whose quality bar applies to this goal
-Append the answers to .forge/BRIEF.md. Do not ask anything else, now or later.
+
+Write .forge/BRIEF.md in exactly this shape, so every later phase reads a
+known format:
+
+    # Brief
+    Goal: <the one-line goal>
+    ## Done level
+    ## Hard constraints
+    ## Taste references
+
+A declined or empty intake is a hard stop, never a default. If AskUserQuestion
+returns nothing, write what is missing to .forge/RESUME.md and stop. Never
+proceed on assumed answers. Do not ask anything else, now or later.
 
 ## 2. SIZE
 
@@ -32,7 +45,8 @@ Delegate to the router agent. It returns S, M, or L plus one reason. Record it.
 ## 3. SCOUT (M and L only)
 
 Delegate to the scout agent: market, comparable products, platform
-requirements. One page back, saved to .forge/BRIEF.md under Research.
+requirements, and current obligations and deadlines for the target market,
+primary sources first. One page back, saved to .forge/BRIEF.md under Research.
 
 ## 4. DESIGN (M and L only)
 
@@ -61,15 +75,27 @@ slices that each cross every layer, and writes .forge/PLAN.md plus
 
 ## 6. GREENLIGHT
 
+Before presenting, record the arming line as the last line of .forge/PLAN.md,
+exactly:
+
+    /goal Every line of .forge/DOD.md checked, with evidence recorded in .forge/EVIDENCE.md, and a PASS verdict from the verifier agent.
+
+Write .forge/GREENLIGHT.md, phone-sized: the stack in one line, the slice
+count, the three rubric lines most likely to be contentious, the Claude Design
+share link, and the /goal line to paste. The file states plainly: this is a
+summary for approving away from the desk, never a replacement. Approving means
+the full rubric applies.
+
 Present together, once: the plan, the full rubric, and the Claude Design share
 link. Wait for approval. This is the only stop. On approval, create the file
 .forge/ARMED (this activates the Stop gate).
 
 ## 7. ARM
 
-Set the native goal condition with the /goal command, exactly this shape:
-"Every line of .forge/DOD.md checked, with evidence recorded in
-.forge/EVIDENCE.md, and a PASS verdict from the verifier agent."
+/goal is a user command; you cannot run it. End the greenlight presentation
+with the exact /goal line from PLAN.md for the user to paste with their
+approval. If they skip it, the Stop gate still holds the run; rehydrate.sh
+re-surfaces the line on every session start until the goal is armed.
 
 ## 8. BUILD
 
@@ -106,3 +132,9 @@ rubric state. Remove .forge/ARMED. Announce completion with the report path.
 If a session starts and .forge/RESUME.md shows an unfinished run, continue
 from its next action without re-asking anything. The greenlight is never
 re-opened unless DOD.md itself changed.
+
+Headless resume is bounded: a `claude -p --continue` run may build only when
+.forge/ARMED exists and RESUME.md points past the greenlight. Before the
+gate, a headless run advances no further than the next human input: it stops
+there and writes what it needs to RESUME.md. It never answers intake, never
+approves a plan, never re-opens the gate.

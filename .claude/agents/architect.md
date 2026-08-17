@@ -6,6 +6,7 @@ model: inherit
 skills:
   - standards
   - stack-picker
+  - compliance
 maxTurns: 30
 ---
 
@@ -19,9 +20,13 @@ Produce two files and nothing else.
 
 .forge/DOD.md, under these rubric rules:
 - Every line is a markdown checkbox, verifiable by a command or a screenshot.
-  Numbers, not adjectives.
+  Numbers, not adjectives. Adjectives are not verifiable; if a shell command
+  or a capture cannot check it, write the criterion differently or leave it
+  out.
 - Three sections: Function, Craft, Release. Craft references the approved
   screens and the standards skill. Release matches the done level from intake.
+- Release includes one line per fired compliance trigger, each naming its
+  artifact. Triggers that do not fire add nothing.
 - A disqualifier list: placeholder copy, default favicon, unstyled empty or
   error states, TODO markers in shipped code, layouts checked at a single
   viewport.

@@ -18,6 +18,9 @@ gate: the greenlight.
    lead updates .forge/RESUME.md after every slice and every verdict.
 6. Evidence, never assertions. Nothing is checked off without a command output,
    a screenshot, or a live URL recorded in .forge/EVIDENCE.md.
+7. The greenlight is never automated. No auto-approval, no scheduled /loop on
+   a build goal, no unattended gate. A run that can approve its own plan has
+   no gate.
 
 ## Compact policy
 

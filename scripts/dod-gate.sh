@@ -4,8 +4,8 @@
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 [ -f .forge/ARMED ] || exit 0
 [ -f .forge/DOD.md ] || exit 0
-LEFT=$(grep -c '^- \[ \]' .forge/DOD.md 2>/dev/null || echo 0)
-[ "$LEFT" -eq 0 ] && exit 0
+LEFT=$(grep -c '^- \[ \]' .forge/DOD.md 2>/dev/null || true)
+[ "${LEFT:-0}" -eq 0 ] && exit 0
 {
   echo "forge gate: $LEFT rubric line(s) unchecked. Not done. Next unchecked:"
   grep '^- \[ \]' .forge/DOD.md | head -5

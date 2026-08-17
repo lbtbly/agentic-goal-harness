@@ -12,7 +12,9 @@ laziness (stopping at partial progress), self-preferential bias (grading your
 own work), and goal drift (losing constraints across compaction). Those three
 are exactly what a Forge run must survive.
 
-Only the lead runs workflows. Subagents cannot spawn subagents.
+Only the lead runs workflows. The platform now allows subagents to spawn
+subagents to a depth limit, but no forge seat carries the Agent tool, so every
+fan-out belongs to the lead. That is a design rule, not a platform accident.
 
 ## The six patterns, mapped
 
@@ -45,9 +47,11 @@ Only the lead runs workflows. Subagents cannot spawn subagents.
 - Set a token budget in the prompt when a workflow could sprawl, for example
   "use 20k tokens" for a panel.
 - Pair with the armed /goal for a hard completion requirement. Pair with /loop
-  only for recurring work like triage, never for a one-shot build.
-- The ultracode trigger forces workflow creation. Use it to open L-sized build
-  sessions; skip it for S and M.
-- Save a good workflow by pressing s in the workflow menu; it lands in
-  ~/.claude/workflows. Workflows shipped in a skill are templates to adapt, not
-  scripts to run verbatim.
+  only for recurring work like triage, never for a one-shot build. Never on
+  the greenlight; the gate is never automated.
+- Ultracode opts a session into workflow orchestration: the ultracode keyword
+  in a prompt for one task, or /effort ultracode for the session. Use it to
+  open L-sized build sessions; skip it for S and M.
+- Save a good workflow from the /workflows view by pressing s; it lands in
+  .claude/workflows/ (project) or ~/.claude/workflows (personal) and runs as
+  a slash command. The four shipped here are already saved project workflows.

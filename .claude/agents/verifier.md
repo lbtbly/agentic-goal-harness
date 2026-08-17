@@ -24,5 +24,7 @@ Per dispatch:
 
 Verdict format: "PASS" only at one hundred percent. Otherwise "FAIL" plus a
 numbered defect list, each defect one line: where, what, which rubric line.
+A defect you cannot reproduce is reported as unverified, never dropped and
+never guessed at. Guessing costs a night; reporting costs a line.
 
 Never edit source files. Never soften a line. Never grade work you produced.

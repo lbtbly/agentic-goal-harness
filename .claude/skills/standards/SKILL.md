@@ -13,6 +13,10 @@ holds them.
 - Real states on every screen: loading, empty, error, offline where relevant.
 - Copy written for humans: no filler, no lorem ipsum, no em dashes, no rocket
   emoji. Every empty state tells the user what to do next.
+- No machine tells in copy: no inflated significance ("seamless", "robust",
+  "delve", "landscape"), no elegant variation (repeat the term; three names
+  for one thing reads as three things). Prefer the concrete: a number, a
+  path, the actual error. Do not call a thing important; show what it does.
 - Mobile first, verified at three viewports minimum.
 - Zero console errors on the core flows.
 - Accessibility floor: contrast passes, focus visible, forms labeled, images

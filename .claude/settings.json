@@ -19,29 +19,29 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/guard.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/guard.sh\"" }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/checks.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/checks.sh\"" }
         ]
       }
     ],
     "SubagentStop": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/runlog.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/runlog.sh\"" }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/dod-gate.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/dod-gate.sh\"" }
         ]
       }
     ],
@@ -49,35 +49,36 @@
       {
         "matcher": "rate_limit|overloaded",
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/checkpoint.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/checkpoint.sh\"" }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/rehydrate.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/rehydrate.sh\"" }
         ]
       }
     ],
     "PreCompact": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/snapshot.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/snapshot.sh\"" }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/checkpoint.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/checkpoint.sh\"" }
         ]
       }
     ],
     "Notification": [
       {
+        "matcher": "permission_prompt|idle_prompt",
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/notify.sh" }
+          { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/scripts/notify.sh\"" }
         ]
       }
     ]

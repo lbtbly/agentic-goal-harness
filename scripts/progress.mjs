@@ -230,6 +230,8 @@ const logTail = runlog.trim() ? runlog.trim().split('\n').slice(-5).reverse().ma
   return m ? { t: m[1].slice(11, 16), id: m[2], txt: m[3] } : { t: '', id: '', txt: l }
 }) : []
 
+const footerItem = `<span class="mi"><span class="d"></span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page. · estimate: gate 20 + rubric 80, evidence at half weight · tokens sum every session transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>`
+
 const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -329,13 +331,13 @@ display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .kv .v{font-size:.72rem;color:var(--ink);overflow:hidden;display:-webkit-box;
 -webkit-line-clamp:2;-webkit-box-orient:vertical}
 .feed{overflow:hidden;min-height:0}
-.feed .row{display:flex;gap:.55rem;padding:.3rem 0;border-bottom:1px solid var(--line);align-items:baseline}
+.feed .row{display:flex;gap:.55rem;padding:.3rem 0;border-bottom:1px solid var(--line);align-items:flex-start}
 .feed .row:last-child{border-bottom:none}
-.feed .t{font:400 .62rem/1.5 var(--mono);color:var(--muted);flex:none}
+.feed .t{font:400 .62rem/1.6 var(--mono);color:var(--muted);flex:none}
 .feed .tag{font:500 .6rem/1.2 var(--mono);color:var(--muted);background:var(--raised);
-border:1px solid var(--line);border-radius:6px;padding:2px 6px;flex:none}
-.feed .tx{font-size:.7rem;color:var(--ink);opacity:.85;white-space:nowrap;
-overflow:hidden;text-overflow:ellipsis}
+border:1px solid var(--line);border-radius:6px;padding:2px 6px;flex:none;margin-top:.1rem}
+.feed .tx{font-size:.7rem;color:var(--ink);opacity:.85;overflow:hidden;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .gap{margin-top:.7rem}
 .shots{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:.5rem;flex:1;min-height:0}
 .shots figure{overflow:hidden;border-radius:6px;border:1px solid var(--line);
@@ -346,10 +348,15 @@ font:400 .58rem/1.4 var(--mono);padding:.15rem .35rem;
 background:rgb(11 11 11 / .78);color:var(--muted);
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .empty{color:var(--muted);font-size:.72rem;margin:auto;text-align:center;padding:1rem}
-footer{display:flex;justify-content:space-between;gap:1rem;align-items:center;
-border-top:1px solid var(--line);padding-top:.45rem;
-font:400 .62rem/1.4 var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden}
-footer span{overflow:hidden;text-overflow:ellipsis}
+footer{border-top:1px solid var(--line);padding-top:.45rem;overflow:hidden;
+font:400 .62rem/1.4 var(--mono);color:var(--muted);white-space:nowrap}
+.marq{display:flex;width:max-content}
+.marq .mi{padding-right:4rem}
+@media (prefers-reduced-motion:no-preference){
+.marq{animation:marq 45s linear infinite}
+@keyframes marq{to{transform:translateX(-50%)}}}
+.marq.still{animation:none}
+.marq.still .mi+.mi{display:none}
 footer .d{display:inline-block;width:6px;height:6px;border-radius:50%;
 background:var(--accent);margin-right:.4rem;vertical-align:baseline}
 .lb{position:fixed;inset:0;display:none;background:rgb(0 0 0 / .6);z-index:9;
@@ -453,8 +460,7 @@ h1{white-space:normal}
 </main>
 
 <footer>
-  <span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page.</span>
-  <span><span class="d"></span>estimate: gate 20 + rubric 80, evidence at half weight · tokens sum every session transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>
+  <div class="marq">${footerItem}${footerItem}</div>
 </footer>
 
 <div class="lb">
@@ -465,6 +471,8 @@ h1{white-space:normal}
 <script>
 var G=${galleryJson},gi=0
 var lb=document.querySelector('.lb')
+var mq=document.querySelector('.marq')
+if(mq&&mq.scrollWidth/2<=mq.parentElement.clientWidth)mq.classList.add('still')
 function show(i){
   if(!G.length)return
   gi=((i%G.length)+G.length)%G.length

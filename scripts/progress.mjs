@@ -359,6 +359,29 @@ font:400 .62rem/1.4 var(--mono);color:var(--muted);white-space:nowrap}
 .marq.still .mi+.mi{display:none}
 footer .d{display:inline-block;width:6px;height:6px;border-radius:50%;
 background:var(--accent);margin-right:.4rem;vertical-align:baseline}
+.phead{display:flex;justify-content:space-between;align-items:center;margin-bottom:.55rem}
+.phead .lbl{margin-bottom:0}
+.btn-all{font:500 .66rem/1.2 var(--sans);padding:4px 10px;border-radius:8px;
+background:var(--raised);color:var(--ink);border:1px solid var(--line);cursor:pointer}
+.btn-all:hover{background:#2E2E2E}
+.rb{position:fixed;inset:0;display:none;background:rgb(0 0 0 / .6);z-index:9;
+align-items:center;justify-content:center;padding:2rem}
+.rb.open{display:flex}
+.rb .box{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+box-shadow:0 8px 32px rgb(0 0 0 / .7);max-width:62rem;width:100%;max-height:88vh;
+display:flex;flex-direction:column;overflow:hidden}
+.rb .bh{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+padding:.75rem 1rem;border-bottom:1px solid var(--line)}
+.rb .bh .ti{font:500 .85rem/1.3 var(--sans);color:var(--ink)}
+.rb .bh .lg{font:400 .64rem/1.4 var(--mono);color:var(--muted)}
+.rb .bb{overflow-y:auto;padding:.4rem 1rem 1rem}
+.rb .sec{font:500 .64rem/1.3 var(--mono);letter-spacing:.04em;color:var(--muted);
+margin:.9rem 0 .3rem}
+.rb .row{display:flex;gap:.6rem;padding:.34rem 0;border-bottom:1px solid var(--line);
+align-items:flex-start}
+.rb .row:last-child{border-bottom:none}
+.rb .id{font:500 .64rem/1.6 var(--mono);color:var(--muted);flex:none;min-width:2.8ch}
+.rb .tx{font-size:.73rem;line-height:1.5;color:var(--ink);opacity:.9}
 .lb{position:fixed;inset:0;display:none;background:rgb(0 0 0 / .6);z-index:9;
 align-items:center;justify-content:center;gap:1rem;padding:1.5rem;cursor:pointer}
 .lb.open{display:flex}
@@ -420,7 +443,7 @@ h1{white-space:normal}
 
 <main>
   <div class="panel">
-    <div class="lbl">Rubric</div>
+    <div class="phead"><span class="lbl">Rubric</span>${allLines.length ? `<button class="btn-all">all ${allLines.length} lines</button>` : ''}</div>
     ${allLines.length ? `<div class="rgrid">
     <span></span><span></span><span class="h" title="verified by the verifier">ok</span><span class="h" title="evidence recorded, awaiting the verifier">ev</span><span class="h">all</span>
     ${sections.filter(s => s.lines.length).map(s => {
@@ -463,6 +486,15 @@ h1{white-space:normal}
   <div class="marq">${footerItem}${footerItem}</div>
 </footer>
 
+${allLines.length ? `<div class="rb">
+  <div class="box">
+    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open of ${allLines.length}</span><span class="lg">green filled: verified · amber ring: evidence, awaiting the verifier · grey ring: open</span></div>
+    <div class="bb">
+    ${sections.filter(s => s.lines.length).map(s => `<div class="sec">${esc(s.name)}</div>
+    ${s.lines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}`).join('\n    ')}
+    </div>
+  </div>
+</div>` : ''}
 <div class="lb">
   <button class="nav prev" aria-label="previous capture">&#8249;</button>
   <figure><img alt=""><figcaption></figcaption></figure>
@@ -480,8 +512,13 @@ function show(i){
   lb.querySelector('figcaption').textContent=(gi+1)+' / '+G.length+' · '+G[gi].c
   lb.classList.add('open')
 }
-setInterval(function(){if(!lb.classList.contains('open'))location.reload()},15000)
+var rb=document.querySelector('.rb')
+setInterval(function(){if(!document.querySelector('.lb.open,.rb.open'))location.reload()},15000)
 document.addEventListener('click',function(e){
+  if(rb&&e.target.closest('.btn-all')){rb.classList.add('open');return}
+  if(rb&&rb.classList.contains('open')){
+    if(!e.target.closest('.rb .box'))rb.classList.remove('open')
+    return}
   var f=e.target.closest('.shots figure')
   if(f){show(+f.dataset.i);return}
   if(e.target.closest('.lb .prev')){show(gi-1);return}
@@ -490,6 +527,9 @@ document.addEventListener('click',function(e){
   lb.classList.remove('open')
 })
 document.addEventListener('keydown',function(e){
+  if(rb&&rb.classList.contains('open')){
+    if(e.key==='Escape')rb.classList.remove('open')
+    return}
   if(!lb.classList.contains('open'))return
   if(e.key==='Escape')lb.classList.remove('open')
   else if(e.key==='ArrowLeft')show(gi-1)

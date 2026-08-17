@@ -454,6 +454,7 @@ session is disposable; these files are not.</p>
 <tr><td>RESUME.md</td><td>last phase, current slice, next action; checkpoint stamps</td></tr>
 <tr><td>REPORT.md</td><td>the final report: links, evidence highlights, rubric state</td></tr>
 <tr><td>ARMED</td><td>exists only between approval and ship; activates the Stop gate</td></tr>
+<tr><td>PROGRESS.html</td><td>the run's status page, drawn from the files above; never edited by hand</td></tr>
 <tr><td>snapshots/</td><td>timestamped copies of the state files, taken before each compaction</td></tr>
 </table>
 
@@ -548,11 +549,20 @@ caffeinate -dims claude
 tmux new -s forge
 claude
 # detach: Ctrl+B then D    reattach later: tmux attach -t forge</code></pre>
-<p>Checking on a run from your phone: the state files are the status page.
-If the repo pushes to GitHub, read <code>.forge/RESUME.md</code> and
-<code>.forge/RUNLOG.md</code> in the GitHub app. <code>GREENLIGHT.md</code>
-is written phone-sized for exactly this: read it, then approve from your
-desk, where the full rubric is in front of you.</p>
+<p>Watching a run: open <code>.forge/PROGRESS.html</code> in any browser
+tab. It shows the pipeline as a timeline (done, active, skipped, pending),
+the slices, every rubric line in one of three states (open, evidence
+recorded by the builder, verified by the verifier), the latest captures,
+the evidence feed, and the dispatch log. The hooks regenerate it after
+every subagent stop, checkpoint, and evidence line, and the page reloads
+itself every 15 seconds, so a tab left open tracks the run with no server
+and no setup. It is drawn from the state files and never edited by hand;
+if the page and a file disagree, the file wins.</p>
+<p>Checking on a run from your phone: if the repo pushes to GitHub, read
+<code>.forge/RESUME.md</code> and <code>.forge/RUNLOG.md</code> in the
+GitHub app. <code>GREENLIGHT.md</code> is written phone-sized for exactly
+this: read it, then approve from your desk, where the full rubric is in
+front of you.</p>
 <div class="warn"><strong>An unattended machine plus a broken ping is a
 silent failure.</strong> The desktop notification from
 <code>notify.sh</code> is the only signal that the gate is waiting or a

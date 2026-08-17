@@ -74,6 +74,21 @@ touch "$T2/.forge/ARMED"
 OUT=$(CLAUDE_PROJECT_DIR="$T2" "$S/rehydrate.sh" 2>/dev/null)
 { printf '%s' "$OUT" | grep -q 'Gate active.' && printf '%s' "$OUT" | grep -q 'paste: /goal '; } \
   && ok "rehydrate labels the armed state" || fail "rehydrate armed label wrong"
+
+# 4b. progress renderer: draws the fixture, no-ops without .forge/.
+if command -v node >/dev/null 2>&1; then
+  (cd "$T2" && node "$S/progress.mjs") 2>/dev/null
+  { [ -f "$T2/.forge/PROGRESS.html" ] && grep -q 'Pipeline' "$T2/.forge/PROGRESS.html"; } \
+    && ok "progress renders the fixture" || fail "progress did not render"
+  T3=$(mktemp -d)
+  (cd "$T3" && node "$S/progress.mjs") 2>/dev/null
+  RC=$?
+  { [ $RC -eq 0 ] && [ "$(find "$T3" -mindepth 1 | wc -l | tr -d ' ')" -eq 0 ]; } \
+    && ok "progress no-ops without .forge/" || fail "progress misbehaved without .forge/ (rc=$RC)"
+  rm -rf "$T3"
+else
+  fail "node not found; progress renderer unchecked"
+fi
 rm -rf "$T2"
 
 # 5. The four workflows parse under the runtime grammar (async body, export stripped).

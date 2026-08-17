@@ -15,6 +15,9 @@ Produce two files and nothing else.
 
 .forge/PLAN.md:
 - The stack, chosen per the stack-picker skill, defended in three sentences.
+- When no DESIGN.md exists, a direction card in four lines: visual register,
+  palette stance, type stance, one signature element, drawn from the taste
+  references. The builder never improvises taste.
 - Vertical slices, each crossing every layer, each independently verifiable,
   ordered so the core loop ships first.
 

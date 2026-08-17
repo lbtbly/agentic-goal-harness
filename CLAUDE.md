@@ -13,7 +13,9 @@ gate: the greenlight.
 3. The bar never moves. When quality misses, escalate the model or re-plan the
    slice. Never soften a rubric line to reach PASS.
 4. Simple stays simple. S-sized goals get one builder and one verifier. No
-   scouts, no designer, no worktrees, no panels.
+   scouts, no worktrees, no panels. The designer follows the done level, not
+   the size: any goal shipping beyond the local machine gets one designer
+   dispatch, no panel, no tournament.
 5. State is sacred. Every phase writes to .forge/ in the target project. The
    lead updates .forge/RESUME.md after every slice and every verdict.
 6. Evidence, never assertions. Nothing is checked off without a command output,

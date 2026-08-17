@@ -184,16 +184,22 @@ if (firstTs) {
 // ~/.claude/projects/<cwd-slug>/, cache reads included. Incremental: a byte
 // offset per transcript is kept in .forge/.progress-tokens.json so each hook
 // call reads only what was appended since the last one.
+const slug = process.cwd().replace(/[/.]/g, '-')
+const projDir = join(homedir(), '.claude', 'projects', slug)
 let tokensTxt = ''
 try {
-  const slug = process.cwd().replace(/[/.]/g, '-')
-  const tdir = join(homedir(), '.claude', 'projects', slug)
+  const files = []
+  for (const f of readdirSync(projDir)) {
+    if (f.endsWith('.jsonl')) files.push({ p: join(projDir, f), k: f })
+    else {
+      const sub = join(projDir, f, 'subagents')
+      try { for (const g of readdirSync(sub)) if (g.endsWith('.jsonl')) files.push({ p: join(sub, g), k: `${f}/${g}` }) } catch {}
+    }
+  }
   const cachePath = '.forge/.progress-tokens.json'
   let cache = {}
   try { cache = JSON.parse(readFileSync(cachePath, 'utf8')) } catch {}
-  for (const f of readdirSync(tdir)) {
-    if (!f.endsWith('.jsonl')) continue
-    const p = join(tdir, f)
+  for (const { p, k: f } of files) {
     const size = statSync(p).size
     const c = cache[f] || { off: 0, tok: 0 }
     if (size > c.off) {
@@ -227,6 +233,50 @@ const evTail = evidenceLines.slice(-7).reverse().map(l => {
   const m = l.match(/^(\S+) \| (\S+) \| (.*)$/)
   return m ? { t: m[1].slice(11, 16), id: m[2], txt: m[3] } : { t: '', id: '', txt: l }
 })
+// The real agent tree, from the session transcripts: every subagent leaves
+// agent-<id>.meta.json (type, description, spawnDepth, toolUseId) plus a
+// transcript whose timestamps give start, end, and liveness. Agents deeper
+// than 1 are attributed to the agent whose transcript contains their
+// spawning tool_use id.
+const treeAgents = []
+try {
+  for (const sd of readdirSync(projDir)) {
+    const sub = join(projDir, sd, 'subagents')
+    if (!existsSync(sub)) continue
+    for (const f of readdirSync(sub)) {
+      if (!f.endsWith('.meta.json')) continue
+      let m; try { m = JSON.parse(readFileSync(join(sub, f), 'utf8')) } catch { continue }
+      const id = f.slice(6, -10)
+      let st = null, en = null, live = false
+      try {
+        const s = statSync(join(sub, `agent-${id}.jsonl`))
+        en = s.mtimeMs; st = s.birthtimeMs || null
+        live = Date.now() - s.mtimeMs < 120000
+      } catch {}
+      treeAgents.push({ id, dir: sub, type: m.agentType || 'agent', desc: m.description || '', depth: m.spawnDepth || 1, tu: m.toolUseId, st, en, live, parent: null })
+    }
+  }
+  for (const a of treeAgents) {
+    if (a.depth > 1 && a.tu) {
+      for (const p of treeAgents) {
+        if (p === a || p.depth !== a.depth - 1) continue
+        try { if (readFileSync(join(p.dir, `agent-${p.id}.jsonl`), 'utf8').includes(a.tu)) { a.parent = p.id; break } } catch {}
+      }
+    }
+  }
+} catch {}
+treeAgents.sort((a, b) => (a.st || 0) - (b.st || 0))
+const fmtDur = ms => { if (!ms || ms < 0) return ''; const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` }
+const kids = id => treeAgents.filter(a => a.parent === id)
+const renderNode = a =>
+  `<div class="tnode"><span class="tdot${a.live ? ' on' : ''}"></span><span class="tag">${esc(a.type)}</span><span class="tds">${esc(trunc(a.desc, 64))}</span><span class="tdu">${a.live ? 'running' : fmtDur((a.en || 0) - (a.st || a.en || 0))}</span></div>`
+  + kids(a.id).map(k => `<div class="tkid">${renderNode(k)}</div>`).join('')
+const roots = treeAgents.filter(a => !a.parent)
+const TREE_MAX = 12
+const shownRoots = roots.slice(-TREE_MAX)
+const treeOmitted = roots.length - shownRoots.length
+const treeHtml = shownRoots.map(renderNode).join('\n    ')
+
 // Dispatch pulse: liveness, rhythm, and who did the work. RUNLOG records
 // stops, so "last activity" is the time since any agent last finished.
 const runEntries = runlog.trim() ? runlog.trim().split('\n').map(l => {
@@ -234,11 +284,9 @@ const runEntries = runlog.trim() ? runlog.trim().split('\n').map(l => {
   return m ? { t: Date.parse(m[1]), a: m[2] } : null
 }).filter(e => e && !isNaN(e.t)) : []
 const SEATS = ['router', 'scout', 'designer', 'architect', 'builder', 'verifier', 'finisher']
-const seatCounts = {}
-for (const e of runEntries) {
-  const k = SEATS.includes(e.a) ? e.a : 'helpers'
-  seatCounts[k] = (seatCounts[k] || 0) + 1
-}
+const typeCounts = {}
+for (const a of treeAgents) typeCounts[a.type] = (typeCounts[a.type] || 0) + 1
+const anonStops = runEntries.filter(e => !SEATS.includes(e.a)).length
 const lastT = runEntries.length ? Math.max(...runEntries.map(e => e.t)) : 0
 const agoMin = lastT ? Math.max(0, Math.round((Date.now() - lastT) / 60000)) : null
 const agoTxt = agoMin === null ? '' : agoMin < 1 ? 'just now'
@@ -258,10 +306,12 @@ if (runEntries.length) {
     `<div class="bar${i === lastIdx && agoMin !== null && agoMin <= bucketMin * 1.5 ? ' hot' : ''}" style="height:${c ? Math.max(14, Math.round(c / max * 100)) : 4}%"></div>`
   ).join('')
 }
-const seatChips = [...SEATS, 'helpers'].filter(k => seatCounts[k])
-  .map(k => `<span class="chip">${k} <b>&times;${seatCounts[k]}</b></span>`).join('\n    ')
+const seatChips = Object.entries(typeCounts).sort((x, y) => y[1] - x[1])
+  .map(([k, n]) => `<span class="chip">${esc(k)} <b>&times;${n}</b></span>`).join('\n    ')
+  + (anonStops ? `\n    <span class="chip">helper stops <b>&times;${anonStops}</b></span>` : '')
 
-const footerItem = `<span class="mi"><span class="d"></span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page. · estimate: gate 20 + rubric 80, evidence at half weight, 100 only when every line is verified and the report exists · tokens sum every session transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>`
+const footerA = `<span class="mi"><span class="d"></span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page.</span>`
+const footerB = `<span class="mi">estimate: gate 20 + rubric 80, evidence at half weight, 100 only when every line is verified and the report exists · tokens sum every session and subagent transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>`
 
 const html = `<!DOCTYPE html>
 <html lang="en">
@@ -279,7 +329,8 @@ const html = `<!DOCTYPE html>
 *{box-sizing:border-box;margin:0}
 html{font-size:clamp(12px,0.85vw,17px)}
 body{height:100dvh;overflow:hidden;display:grid;
-grid-template-rows:auto auto 1fr auto;gap:.8rem;padding:1rem 1.25rem .6rem;
+grid-template-rows:auto auto 1fr auto;grid-template-columns:minmax(0,1fr);
+gap:.8rem;padding:1rem 1.25rem .6rem;
 background-color:var(--bg);
 background-image:radial-gradient(var(--dot) 1px,transparent 1px);
 background-size:24px 24px;background-position:-1px -1px;
@@ -335,7 +386,10 @@ border-bottom:4px solid transparent}
 .slices .sl-done{color:var(--ink)}.slices .sl-done .d{background:var(--muted)}
 .slices .sl-active{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
 .slices .sl-active .d{background:var(--accent)}
-main{display:grid;grid-template-columns:1.05fr 1.15fr 1fr;gap:.8rem;min-height:0}
+main{display:grid;grid-template-columns:1.05fr 1.45fr .72fr;
+grid-template-rows:1.3fr .8fr;gap:.8rem;min-height:0}
+.panel.rub{grid-row:1/3}
+.panel.disp{grid-column:2/4}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;
 padding:.8rem .9rem;overflow:hidden;min-height:0;display:flex;flex-direction:column;
 box-shadow:0 2px 8px rgb(0 0 0 / .5)}
@@ -373,12 +427,27 @@ display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .live{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;
 background:var(--line);margin-right:.4rem;vertical-align:baseline}
 .live.ok{background:var(--accent)}.live.warn{background:var(--warn)}
-.spark{display:flex;align-items:flex-end;gap:2px;height:2.1rem;margin:.35rem 0 .55rem}
+.spark{display:flex;align-items:flex-end;gap:2px;height:1.5rem;width:15rem;flex:none}
 .spark .bar{flex:1;min-width:2px;background:var(--raised);border-radius:1px}
 .spark .bar.hot{background:var(--accent)}
-.seats{display:flex;flex-wrap:wrap;gap:.35rem}
+.seats{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem}
 .seats .chip{font-size:.62rem}
 .seats .chip b{color:var(--ink);font-weight:500}
+.troot{font:500 .66rem/1.4 var(--mono);color:var(--muted);margin:.45rem 0 .1rem}
+.tree{flex:1;min-height:0;overflow:hidden;column-count:2;column-gap:1.8rem}
+.tnode{break-inside:avoid;display:flex;gap:.5rem;align-items:baseline;
+padding:.16rem 0 .16rem .8rem;position:relative;border-left:1px solid var(--line);min-width:0}
+.tnode::before{content:"";position:absolute;left:0;top:.72rem;width:.5rem;
+height:1px;background:var(--line)}
+.tdot{width:.5rem;height:.5rem;border-radius:50%;flex:none;background:var(--muted);
+position:relative;top:.05rem}
+.tdot.on{background:var(--accent)}
+@media (prefers-reduced-motion:no-preference){
+.tdot.on{animation:pulse 1.6s ease-in-out infinite}}
+.tnode .tds{font-size:.7rem;color:var(--ink);opacity:.85;white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.tnode .tdu{font:400 .62rem/1.5 var(--mono);color:var(--muted);flex:none}
+.tkid{margin-left:1.3rem}
 .shots{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:.5rem;flex:1;min-height:0}
 .shots figure{overflow:hidden;border-radius:6px;border:1px solid var(--line);
 position:relative;min-height:0;cursor:pointer;background:var(--raised)}
@@ -388,8 +457,9 @@ font:400 .58rem/1.4 var(--mono);padding:.15rem .35rem;
 background:rgb(11 11 11 / .78);color:var(--muted);
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .empty{color:var(--muted);font-size:.72rem;margin:auto;text-align:center;padding:1rem}
-footer{border-top:1px solid var(--line);padding-top:.45rem;overflow:hidden;
+footer{border-top:1px solid var(--line);padding-top:.45rem;display:flex;gap:2rem;
 font:400 .62rem/1.4 var(--mono);color:var(--muted);white-space:nowrap}
+.mw{flex:1;min-width:0;overflow:hidden}
 .marq{display:flex;width:max-content}
 .marq .mi{padding-right:4rem}
 @media (prefers-reduced-motion:no-preference){
@@ -437,7 +507,10 @@ box-shadow:0 8px 32px rgb(0 0 0 / .7);display:flex;flex-direction:column;min-hei
 .lb figcaption{font:400 .68rem/1.5 var(--mono);color:var(--muted);padding:.4rem .7rem}
 @media (max-width:900px),(orientation:portrait){
 body{height:auto;overflow:auto;grid-template-rows:none}
-main{grid-template-columns:1fr}
+main{grid-template-columns:1fr;grid-template-rows:none}
+.panel.rub{grid-row:auto}
+.panel.disp{grid-column:auto}
+.tree{column-count:1}
 h1{white-space:normal}
 .graph{flex-wrap:wrap;gap:.5rem}
 .pnode{flex:1 1 30%}
@@ -483,7 +556,7 @@ h1{white-space:normal}
 </section>
 
 <main>
-  <div class="panel">
+  <div class="panel rub">
     <div class="phead"><span class="lbl">Rubric</span>${allLines.length ? `<button class="btn-all">all ${allLines.length} lines</button>` : ''}</div>
     ${allLines.length ? `<div class="rgrid">
     <span></span><span></span><span class="h" title="verified by the verifier">ok</span><span class="h" title="evidence recorded, awaiting the verifier">ev</span><span class="h">all</span>
@@ -509,11 +582,6 @@ h1{white-space:normal}
     <div class="feed" style="flex:1">
     ${evTail.map(r => `<div class="row"><span class="t">${esc(r.t)}</span><span class="tag">${esc(r.id)}</span><span class="tx">${esc(r.txt)}</span></div>`).join('\n    ')}
     </div>` : '<p class="empty">No evidence recorded yet.</p>'}
-    ${runEntries.length ? `<div class="lbl gap"><span class="live ${liveCls}"></span>Dispatches · ${runEntries.length} total · last ${agoTxt}</div>
-    <div class="spark">${sparkBars}</div>
-    <div class="seats">
-    ${seatChips}
-    </div>` : ''}
   </div>
 
   <div class="panel">
@@ -522,10 +590,22 @@ h1{white-space:normal}
     ${showable.map((s, i) => `<figure data-i="${i}"><img src="${esc(s.copy)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
     </div>` : '<p class="empty">Captures appear as the build starts producing screenshots.</p>'}
   </div>
+
+  <div class="panel disp">
+    <div class="phead"><span class="lbl"><span class="live ${liveCls}"></span>Dispatches · ${treeAgents.length} agent(s) · ${runEntries.length} stop(s) · last ${agoTxt}</span><div class="spark">${sparkBars}</div></div>
+    ${treeAgents.length ? `<div class="troot">lead · the session${treeOmitted > 0 ? ` · ${treeOmitted} earlier agent(s) not shown` : ''}</div>
+    <div class="tree">
+    ${treeHtml}
+    </div>
+    <div class="seats">
+    ${seatChips}
+    </div>` : '<p class="empty">Agent dispatches appear once the run starts delegating.</p>'}
+  </div>
 </main>
 
 <footer>
-  <div class="marq">${footerItem}${footerItem}</div>
+  <div class="mw"><div class="marq">${footerA}${footerA}</div></div>
+  <div class="mw"><div class="marq" style="animation-duration:38s">${footerB}${footerB}</div></div>
 </footer>
 
 ${allLines.length ? `<div class="rb">
@@ -545,8 +625,9 @@ ${allLines.length ? `<div class="rb">
 <script>
 var G=${galleryJson},gi=0
 var lb=document.querySelector('.lb')
-var mq=document.querySelector('.marq')
-if(mq&&mq.scrollWidth/2<=mq.parentElement.clientWidth)mq.classList.add('still')
+document.querySelectorAll('.marq').forEach(function(m){
+  if(m.scrollWidth/2<=m.parentElement.clientWidth)m.classList.add('still')
+})
 function show(i){
   if(!G.length)return
   gi=((i%G.length)+G.length)%G.length

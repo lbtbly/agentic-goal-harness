@@ -485,7 +485,10 @@ display:flex;flex-direction:column;overflow:hidden}
 .rb .bh{display:flex;justify-content:space-between;align-items:center;gap:1rem;
 padding:.75rem 1rem;border-bottom:1px solid var(--line)}
 .rb .bh .ti{font:500 .85rem/1.3 var(--sans);color:var(--ink)}
-.rb .bh .lg{font:400 .64rem/1.4 var(--mono);color:var(--muted)}
+.rb .bh .lg{font:400 .64rem/1.4 var(--mono);color:var(--muted);
+display:flex;align-items:center;gap:.4rem;flex:none}
+.rb .bh .lg .dotln{margin-top:0}
+.rb .bh .lg .dotln:not(:first-child){margin-left:.7rem}
 .rb .bb{overflow-y:auto;padding:.4rem 1rem 1rem}
 .rb .sec{font:500 .64rem/1.3 var(--mono);letter-spacing:.04em;color:var(--muted);
 margin:.9rem 0 .3rem}
@@ -612,7 +615,7 @@ h1{white-space:normal}
 
 ${allLines.length ? `<div class="rb">
   <div class="box">
-    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open of ${allLines.length}</span><span class="lg">green filled: verified · amber ring: evidence, awaiting the verifier · grey ring: open</span></div>
+    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open of ${allLines.length}</span><span class="lg"><span class="dotln ok"></span>verified<span class="dotln wait"></span>evidence, awaiting the verifier<span class="dotln idle"></span>open</span></div>
     <div class="bb">
     ${sections.filter(s => s.lines.length).map(s => `<div class="sec">${esc(s.name)}</div>
     ${s.lines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}`).join('\n    ')}

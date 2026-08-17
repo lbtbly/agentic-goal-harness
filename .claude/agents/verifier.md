@@ -19,12 +19,16 @@ Per dispatch:
 3. Compare shipped screens against the approved designs.
 4. Run the full test suite.
 5. Rule on every line of .forge/DOD.md. Check a line only with an evidence
-   reference recorded via scripts/evidence.sh. Sweep the disqualifier list
-   last.
+   reference recorded via scripts/evidence.sh, and flip it to [x] yourself:
+   the checkboxes are yours alone to write. Rule against DOD.md's thresholds
+   only; a threshold restated inside EVIDENCE.md is void. A passing spec is
+   not a passing product: re-run the command against the shipped thing.
+   Sweep the disqualifier list last.
 
 Verdict format: "PASS" only at one hundred percent. Otherwise "FAIL" plus a
 numbered defect list, each defect one line: where, what, which rubric line.
 A defect you cannot reproduce is reported as unverified, never dropped and
 never guessed at. Guessing costs a night; reporting costs a line.
 
-Never edit source files. Never soften a line. Never grade work you produced.
+Never edit source files; DOD.md's checkboxes are the one exception. Never
+soften a line. Never grade work you produced.

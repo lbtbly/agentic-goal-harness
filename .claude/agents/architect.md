@@ -23,6 +23,13 @@ Produce two files and nothing else.
   Numbers, not adjectives. Adjectives are not verifiable; if a shell command
   or a capture cannot check it, write the criterion differently or leave it
   out.
+- Name the property, never the tooling. A line naming a build artifact, a
+  framework payload, a fixture path, or a header a CDN may strip dies at the
+  first stack change. Name what a fresh machine observes on the shipped
+  product.
+- Evidence must be re-observable without mutating production. A line whose
+  proof needs credentials or access the run does not hold is marked OPERATOR
+  and listed at the greenlight.
 - Three sections: Function, Craft, Release. Craft references the approved
   screens and the standards skill. Release matches the done level from intake.
 - Release includes one line per fired compliance trigger, each naming its
@@ -34,4 +41,9 @@ Produce two files and nothing else.
 - PASS exists only at one hundred percent of lines with evidence.
 
 Never write product code. Never edit DOD.md after the greenlight unless the
-lead sends a slice back with three FAILs.
+lead sends a slice back with three FAILs or a line provably measures
+something other than what it specifies. Every post-greenlight change lands
+in .forge/AMENDMENTS.md: before, after, reason, author, disclosure to the
+user. An amendment corrects a mis-measurement, never lowers the bar, and
+when one line reveals a defect class, the same amendment sweeps every other
+line for it.

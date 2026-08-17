@@ -87,8 +87,11 @@ summary for approving away from the desk, never a replacement. Approving means
 the full rubric applies.
 
 Present together, once: the plan, the full rubric, and the Claude Design share
-link. Wait for approval. This is the only stop. On approval, create the file
-.forge/ARMED (this activates the Stop gate).
+link. On S goals, no screens exist; GREENLIGHT.md names the craft lines as
+the screen contract. Plan mode blocks writes, so leave it before this phase:
+the gate documents exist on disk when presented, never only in the
+transcript. Wait for approval. This is the only stop. On approval, create
+the file .forge/ARMED (this activates the Stop gate).
 
 ## 7. ARM
 
@@ -108,8 +111,12 @@ commit. Record evidence with scripts/evidence.sh as you go.
 
 Delegate to the verifier agent with a fresh dispatch: it walks the real
 product as each persona, compares screens against the approved designs, runs
-the full suite, and rules on every rubric line. On FAIL, send its defect list
-back to the builder.
+the full suite, and rules on every rubric line, flipping each passed line to
+[x] itself; the checkboxes are the verifier's alone, and the Stop gate reads
+them. On FAIL, send its defect list back to the builder. Defects are fixed
+by a builder dispatch, never by the lead. Only the user may conclude a run
+below one hundred percent; the verdict and each open line then land in
+RESUME.md, exactly as written.
 
 On L goals, run the verify-fanout workflow (one agent per rubric line) and,
 when the defect count is unknown, the defect-sweep workflow: keep sweeping

@@ -105,6 +105,10 @@ if (active < 0) {
   })
 }
 if (active < 0) active = shipped ? 9 : armed ? 6 : dod ? 5 : brief ? 1 : 0
+// A concluded run has no active phase: the whole pipeline reads done.
+const concluded = /\bconcluded\b/i.test(resume)
+const verdict = (resume.match(/Verdict:\s*\**([A-Z]+[^*\n]*?)\**\s*$/im) || [, ''])[1]
+if (concluded) active = 9
 const scoutSkipped = active > 2 && !/##\s*Research/i.test(brief)
 const designSkipped = active > 3 && !existsSync('.forge/DESIGN.md')
 const phaseState = i =>
@@ -174,7 +178,7 @@ const firstTs = (runlog.match(/^(\d{4}-\d{2}-\d{2}T[\d:]+Z)/m) || evidence.match
 let durationTxt = ''
 if (firstTs) {
   const start = Date.parse(firstTs)
-  const frozen = shipped && allLines.length > 0 && !dod.includes('- [ ]')
+  const frozen = concluded || (shipped && allLines.length > 0 && !dod.includes('- [ ]'))
   const end = frozen ? (() => { try { return statSync('.forge/REPORT.md').mtimeMs } catch { return Date.now() } })() : Date.now()
   const mins = Math.max(0, Math.round((end - start) / 60000))
   durationTxt = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`
@@ -368,6 +372,7 @@ h1{font:500 1.25rem/1.3 var(--sans);white-space:nowrap;overflow:hidden;text-over
 font:500 .625rem/1.2 var(--sans);letter-spacing:.04em;
 background:var(--raised);color:var(--muted);border:1px solid var(--line)}
 .chip--ok{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.chip--bad{color:var(--negative);border-color:color-mix(in srgb,var(--negative) 40%,var(--line))}
 .chip .d{width:6px;height:6px;border-radius:50%;background:currentColor}
 .pct{text-align:right;flex:none}
 .pct .n{font:500 2.4rem/1 var(--sans);font-variant-numeric:tabular-nums}
@@ -554,10 +559,11 @@ h1{white-space:normal}
   <div class="id">
     <h1>${esc(goal || 'Forge run')}</h1>
     <div class="chips">
-    ${shipped && verifiedAll ? '<span class="chip chip--ok"><span class="d"></span>shipped</span>'
+    ${concluded && verdict ? `<span class="chip ${/^PASS/i.test(verdict) ? 'chip--ok' : 'chip--bad'}"><span class="d"></span>concluded · ${esc(trunc(verdict, 30))}</span>`
+      : shipped && verifiedAll ? '<span class="chip chip--ok"><span class="d"></span>shipped</span>'
       : armed ? '<span class="chip chip--ok"><span class="d"></span>gate active</span>'
       : '<span class="chip">pre-greenlight</span>'}
-    ${shipped && !verifiedAll ? '<span class="chip">report written · verify pending</span>' : ''}
+    ${!concluded && shipped && !verifiedAll ? '<span class="chip">report written · verify pending</span>' : ''}
     ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open</span>` : ''}
     ${stackLine ? `<span class="chip">${esc(trunc(stackLine, 58))}</span>` : ''}
     </div>

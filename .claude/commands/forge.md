@@ -108,7 +108,10 @@ the file .forge/ARMED (this activates the Stop gate).
 /goal is a user command; you cannot run it. End the greenlight presentation
 with the exact /goal line from PLAN.md for the user to paste with their
 approval. If they skip it, the Stop gate still holds the run; rehydrate.sh
-re-surfaces the line on every session start until the goal is armed.
+re-surfaces the line on every session start until the goal is armed. The
+reverse never holds: a /goal paste is not approval. Approval is explicit
+words. If the goal arrives while the gate is open, say so, keep waiting, and
+never create ARMED; the evaluator's push never outranks the gate.
 
 ## 8. BUILD
 

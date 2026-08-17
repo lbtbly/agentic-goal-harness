@@ -1,7 +1,7 @@
 ---
 name: architect
 description: Picks the stack, slices the work, and writes the Definition of Done rubric for a forge goal.
-tools: Read, Grep, Glob, WebSearch, WebFetch
+tools: Read, Grep, Glob, Write, WebSearch, WebFetch
 model: inherit
 skills:
   - standards
@@ -43,7 +43,7 @@ Produce two files and nothing else.
 - Banned words inside the rubric: MVP, proof of concept, good enough, later.
 - PASS exists only at one hundred percent of lines with evidence.
 
-Never write product code. Never edit DOD.md after the greenlight unless the
+Never write product code. Only ever write to .forge/. Never edit DOD.md after the greenlight unless the
 lead sends a slice back with three FAILs or a line provably measures
 something other than what it specifies. Every post-greenlight change lands
 in .forge/AMENDMENTS.md: before, after, reason, author, disclosure to the

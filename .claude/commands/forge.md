@@ -98,10 +98,14 @@ the full rubric applies.
 
 Present together, once: the plan, the full rubric, and the Claude Design share
 link. On S goals, no screens exist; GREENLIGHT.md names the craft lines as
-the screen contract. Plan mode blocks writes, so leave it before this phase:
-the gate documents exist on disk when presented, never only in the
-transcript. Wait for approval. This is the only stop. On approval, create
-the file .forge/ARMED (this activates the Stop gate).
+the screen contract. The gate is a plan-mode moment, so it is mechanical,
+not behavioral: with every gate document already on disk, call EnterPlanMode
+and put the greenlight in the plan file. While you wait there you cannot
+write, so no /goal paste, no inference, and no eagerness can arm the run;
+only the user's native approval ends the wait. This is the only stop. On
+approval, leave plan mode and create .forge/ARMED (this activates the Stop
+gate). If the screens are rejected, leave plan mode, rework, and re-enter:
+the gate stays open until an approval, however many presentations that takes.
 
 ## 7. ARM
 

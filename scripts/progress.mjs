@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Renders .forge/PROGRESS.html from the state files. Called by runlog.sh,
 // checkpoint.sh, and evidence.sh; safe to run by hand. No-ops without .forge/.
-// Wallboard layout: fills one screen, no scroll, no interaction needed.
+// Wallboard layout in the Dark Bench style (styles-library): matte graphite,
+// dotted canvas, one rationed green. Fills one screen, no scroll.
 // The state files stay the source of truth; this file only draws them.
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 
 if (!existsSync('.forge')) process.exit(0)
 
@@ -34,6 +36,7 @@ const evidenceLines = evidence.trim() ? evidence.trim().split('\n') : []
 
 // Rubric: sections from ## headings, three states per line.
 const sections = []
+const byId = {}
 let cur = null
 for (const line of dod.split('\n')) {
   const h = line.match(/^##\s+(.+)/)
@@ -41,24 +44,42 @@ for (const line of dod.split('\n')) {
   const c = line.match(/^- \[([ x])\]\s+(?:[*_`]*([A-Za-z]+\d+)[*_`]*\s+)?(.*)/)
   if (c && cur) {
     const id = c[2] || ''
-    cur.lines.push({
-      id, text: c[3],
+    const l = {
+      id, text: c[3].replace(/[*_`]/g, ''),
       state: c[1] === 'x' ? 'verified' : (id && evidenced.has(id) ? 'evidence' : 'open'),
-    })
+    }
+    cur.lines.push(l)
+    if (id) byId[id] = l
   }
 }
 const allLines = sections.flatMap(s => s.lines)
 const nVerified = allLines.filter(l => l.state === 'verified').length
 const nEvidence = allLines.filter(l => l.state === 'evidence').length
 
-// Slices from PLAN.md, cursor from RESUME.md.
+// Slices from PLAN.md, cursor from RESUME.md, per-slice rubric ids from the
+// "Closes ..." clause the architect writes in each slice.
 const sliceTitles = [...plan.matchAll(/^#{0,3}\s*Slice (\d+)[:.]\s*([^\n]*)/gim)].map(m => ({ n: +m[1], title: m[2].trim() }))
 const curSlice = +((resume.match(/Current slice:[^\n]*?(\d+)/i) || [, 0])[1])
+const sliceIds = {}
+const sliceBlocks = plan.split(/^#{0,3}\s*Slice /gim).slice(1)
+for (const b of sliceBlocks) {
+  const n = +(b.match(/^(\d+)/) || [, 0])[1]
+  const closes = b.match(/Closes[:\s]+([A-Z0-9 ,]+)/i)
+  if (n && closes) sliceIds[n] = closes[1].match(/[A-Z]+\d+/g) || []
+}
 const resumeTop = resume.split('\n').filter(l => /^(Last phase|Current slice|Next action)/i.test(l))
+  .map(l => { const m = l.match(/^([^:]+):\s*(.*)$/); return m ? [m[1], m[2]] : ['', l] })
 
-// Pipeline cursor: the highest phase named in RESUME's next action is active;
-// earlier phases are done, scout and design show skipped when their artifacts
-// never appeared.
+// In play: the current slice's not-yet-verified lines, else newest evidenced.
+let inPlay = (sliceIds[curSlice] || []).map(id => byId[id]).filter(l => l && l.state !== 'verified')
+let inPlayLabel = inPlay.length ? `In play · slice ${curSlice}` : 'Recently proven'
+if (!inPlay.length) {
+  inPlay = [...evidenced].reverse().map(id => byId[id]).filter(Boolean).slice(0, 8)
+}
+inPlay = inPlay.sort((a, b) => (a.state === 'open' ? 0 : 1) - (b.state === 'open' ? 0 : 1)).slice(0, 8)
+
+// Pipeline cursor: the phase number in RESUME's next action first, else the
+// earliest keyword, with .md filenames stripped so PLAN.md is not read as PLAN.
 const PHASES = [
   ['Intake', /intake/i], ['Size', /\bsize\b|router/i], ['Scout', /scout/i],
   ['Design', /design\b(?!\.md)/i], ['Plan', /\bplan\b|architect/i],
@@ -66,9 +87,6 @@ const PHASES = [
   ['Verify', /verif/i], ['Ship', /ship|deploy|finisher/i],
 ]
 const nextAction = (resume.match(/Next action:\s*([^\n]*)/i) || [, ''])[1]
-// The canonical resume line leads with the forge phase number ("Next action:
-// 8 BUILD ..."); trust that first. Otherwise the earliest keyword in the
-// line wins, with .md filenames stripped so PLAN.md is not read as PLAN.
 const numMap = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 5, 8: 6, 9: 7, 10: 8 }
 let active = -1
 const num = nextAction.match(/^\s*(\d+)\b/)
@@ -81,9 +99,7 @@ if (active < 0) {
     if (at >= 0 && at < best) { best = at; active = i }
   })
 }
-if (active < 0) { // fall back to artifact existence
-  active = shipped ? 9 : armed ? 6 : dod ? 5 : brief ? 1 : 0
-}
+if (active < 0) active = shipped ? 9 : armed ? 6 : dod ? 5 : brief ? 1 : 0
 if (shipped) active = 9
 const scoutSkipped = active > 2 && !/##\s*Research/i.test(brief)
 const designSkipped = active > 3 && !existsSync('.forge/DESIGN.md')
@@ -99,7 +115,7 @@ const pct = shipped ? 100
     ? Math.min(99, Math.round(20 + 80 * (nVerified + 0.5 * nEvidence) / allLines.length))
     : Math.min(20, Math.round(((Math.min(active, 5) + (armed ? 1 : 0)) / 6) * 20))
 
-// Latest captures: newest images from the usual spots plus paths named in evidence.
+// Latest captures.
 const shots = []
 const walk = (d, depth) => { try {
   for (const f of readdirSync(d)) {
@@ -118,14 +134,66 @@ const latest = [...new Set(shots)]
 
 const stackLine = (plan.match(/^\*{0,2}Stack[:*]*\s*(.+)$/mi) || greenlight.match(/^Stack:\s*(.+)$/mi) || [, ''])[1]
 
-const feed = lines => lines.map(l => `<div class="fl">${esc(l)}</div>`).join('\n')
+// Run duration: first RUNLOG timestamp to now, frozen at REPORT.md when shipped.
+const firstTs = (runlog.match(/^(\d{4}-\d{2}-\d{2}T[\d:]+Z)/m) || evidence.match(/^(\d{4}-\d{2}-\d{2}T[\d:]+Z)/m) || [])[1]
+let durationTxt = ''
+if (firstTs) {
+  const start = Date.parse(firstTs)
+  const end = shipped ? (() => { try { return statSync('.forge/REPORT.md').mtimeMs } catch { return Date.now() } })() : Date.now()
+  const mins = Math.max(0, Math.round((end - start) / 60000))
+  durationTxt = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`
+}
+
+// Tokens: summed from this project's session transcripts under
+// ~/.claude/projects/<cwd-slug>/, cache reads included. Incremental: a byte
+// offset per transcript is kept in .forge/.progress-tokens.json so each hook
+// call reads only what was appended since the last one.
+let tokensTxt = ''
+try {
+  const slug = process.cwd().replace(/[/.]/g, '-')
+  const tdir = join(homedir(), '.claude', 'projects', slug)
+  const cachePath = '.forge/.progress-tokens.json'
+  let cache = {}
+  try { cache = JSON.parse(readFileSync(cachePath, 'utf8')) } catch {}
+  for (const f of readdirSync(tdir)) {
+    if (!f.endsWith('.jsonl')) continue
+    const p = join(tdir, f)
+    const size = statSync(p).size
+    const c = cache[f] || { off: 0, tok: 0 }
+    if (size > c.off) {
+      const fd = openSync(p, 'r')
+      const buf = Buffer.alloc(size - c.off)
+      readSync(fd, buf, 0, buf.length, c.off)
+      closeSync(fd)
+      const chunk = buf.toString('utf8')
+      const lastNl = chunk.lastIndexOf('\n')
+      if (lastNl >= 0) {
+        for (const line of chunk.slice(0, lastNl).split('\n')) {
+          if (!line.includes('"usage"')) continue
+          try {
+            const u = JSON.parse(line)?.message?.usage
+            if (u) c.tok += (u.input_tokens || 0) + (u.output_tokens || 0) +
+              (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)
+          } catch {}
+        }
+        c.off += lastNl + 1
+      }
+      cache[f] = c
+    }
+  }
+  writeFileSync(cachePath, JSON.stringify(cache))
+  const total = Object.values(cache).reduce((a, c) => a + (c.tok || 0), 0)
+  if (total > 0) tokensTxt = total >= 1e6 ? `${(total / 1e6).toFixed(1)}M` : `${Math.round(total / 1e3)}k`
+} catch {}
+
+const dotCls = { verified: 'ok', evidence: 'wait', open: 'idle' }
 const evTail = evidenceLines.slice(-7).reverse().map(l => {
   const m = l.match(/^(\S+) \| (\S+) \| (.*)$/)
-  return m ? `${m[1].slice(11, 16)}  ${m[2]}  ${trunc(m[3], 120)}` : trunc(l, 130)
+  return m ? { t: m[1].slice(11, 16), id: m[2], txt: m[3] } : { t: '', id: '', txt: l }
 })
 const logTail = runlog.trim() ? runlog.trim().split('\n').slice(-5).reverse().map(l => {
   const m = l.match(/^(\S+) \| (\S+) \| (.*)$/)
-  return m ? `${m[1].slice(11, 16)}  ${m[2]}  ${m[3]}` : trunc(l, 90)
+  return m ? { t: m[1].slice(11, 16), id: m[2], txt: m[3] } : { t: '', id: '', txt: l }
 }) : []
 
 const html = `<!DOCTYPE html>
@@ -133,91 +201,120 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="15">
+<noscript><meta http-equiv="refresh" content="15"></noscript>
 <title>Forge run</title>
 <style>
-:root{--bg:#faf9f6;--ink:#1c1b18;--dim:#6b675e;--line:#e2dfd6;--panel:#f1efe8;
---accent:#b4530a;--good:#2c6e49;--mid:#8a6d1f}
-@media (prefers-color-scheme:dark){:root{--bg:#191813;--ink:#e8e6df;--dim:#9a958a;
---line:#33312a;--panel:#201f19;--accent:#e07b39;--good:#6fbf8f;--mid:#c9a44a}}
+:root{--bg:#0B0B0B;--surface:#1C1C1C;--raised:#262626;--ink:#FAFAFA;
+--muted:#8C8C8C;--line:#333333;--accent:#3FBF52;--accent-ink:#052A0C;
+--dot:rgba(255,255,255,0.10);--warn:#E0A32E;--negative:#E0503F;
+--sans:"Inter","General Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
 *{box-sizing:border-box;margin:0}
-html{font-size:clamp(10px,0.95vw,19px)}
+html{font-size:clamp(12px,0.85vw,17px)}
 body{height:100dvh;overflow:hidden;display:grid;
-grid-template-rows:auto auto 1fr auto;gap:.9rem;padding:1.1rem 1.4rem;
-background:var(--bg);color:var(--ink);
-font:1rem/1.45 -apple-system,"Segoe UI",system-ui,sans-serif}
-.plabel{font:600 .64rem ui-monospace,Menlo,monospace;text-transform:uppercase;
-letter-spacing:.09em;color:var(--dim);margin-bottom:.45rem}
-header{display:flex;gap:1.4rem;align-items:center}
+grid-template-rows:auto auto 1fr auto;gap:.8rem;padding:1rem 1.25rem .6rem;
+background-color:var(--bg);
+background-image:radial-gradient(var(--dot) 1px,transparent 1px);
+background-size:24px 24px;background-position:-1px -1px;
+color:var(--ink);font:400 .75rem/1.35 var(--sans)}
+.lbl{font:500 .625rem/1.3 var(--mono);letter-spacing:.04em;color:var(--muted)}
+header{display:flex;gap:1.25rem;align-items:center}
 header .id{flex:1;min-width:0}
-h1{font-size:1.55rem;line-height:1.15;letter-spacing:-.01em;
-white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.badges{margin-top:.3rem;white-space:nowrap;overflow:hidden}
-.badges span{display:inline-block;font:600 .68rem ui-monospace,Menlo,monospace;
-padding:.12em .55em;border:1px solid var(--line);border-radius:99px;
-margin-right:.4rem;color:var(--dim)}
-.badges .on{color:var(--accent);border-color:var(--accent)}
-.badges .ship{color:var(--good);border-color:var(--good)}
+h1{font:500 1.25rem/1.3 var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{margin-top:.35rem;display:flex;gap:.4rem;white-space:nowrap;overflow:hidden}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;
+font:500 .625rem/1.2 var(--sans);letter-spacing:.04em;
+background:var(--raised);color:var(--muted);border:1px solid var(--line)}
+.chip--ok{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.chip .d{width:6px;height:6px;border-radius:50%;background:currentColor}
 .pct{text-align:right;flex:none}
-.pct .n{font-size:3rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
-.pct .cap{font-size:.68rem;color:var(--dim)}
-.meter{height:.42rem;background:var(--line);border-radius:99px;overflow:hidden;
-display:flex;margin-top:.35rem;width:11rem}
-.m-v{background:var(--good)}.m-e{background:var(--mid)}
+.pct .n{font:500 2.4rem/1 var(--sans);font-variant-numeric:tabular-nums}
+.pct .cap{font:400 .625rem/1.4 var(--mono);color:var(--muted)}
+.meter{height:.35rem;background:var(--raised);border:1px solid var(--line);
+border-radius:99px;overflow:hidden;display:flex}
+.pct .meter{margin-top:.4rem;width:10.5rem}
+.m-v{background:var(--accent)}.m-e{background:var(--warn)}
 .stepper{display:grid;grid-template-columns:repeat(9,1fr)}
-.step{text-align:center;position:relative;color:var(--dim);font-size:.78rem;padding-top:.1rem}
-.step::before{content:"";position:absolute;top:.52rem;right:50%;width:100%;
-height:2px;background:var(--line)}
+.step{text-align:center;position:relative;color:var(--muted);font-size:.7rem;padding-top:.05rem}
+.step::before{content:"";position:absolute;top:.42rem;right:50%;width:100%;height:1px;background:var(--line)}
 .step:first-child::before{display:none}
-.step .dot{width:.85rem;height:.85rem;border-radius:99px;background:var(--line);
-margin:0 auto .3rem;position:relative;border:2px solid var(--bg)}
-.step.done{color:var(--ink)}.step.done .dot,.step.done::before{background:var(--good)}
-.step.active{color:var(--ink);font-weight:600}.step.active .dot{background:var(--accent)}
-.step.active::before{background:var(--good)}
-.step.skipped .lbl{text-decoration:line-through}
+.step .dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--raised);
+border:1px solid var(--line);margin:0 auto .28rem;position:relative}
+.step.done{color:var(--ink)}.step.done .dot{background:var(--muted);border-color:var(--muted)}
+.step.active{color:var(--ink);font-weight:500}
+.step.active .dot{background:var(--accent);border-color:var(--accent)}
+.step.skipped .t{text-decoration:line-through}
 @media (prefers-reduced-motion:no-preference){
 .step.active .dot{animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}}
-.slices{display:flex;gap:1.2rem;justify-content:center;margin-top:.55rem;
-font-size:.78rem;color:var(--dim);flex-wrap:nowrap;overflow:hidden}
-.slices .done{color:var(--ink)}.slices .done::before{content:"✓ ";color:var(--good)}
-.slices .active{color:var(--ink);font-weight:600}
-.slices .active::before{content:"▸ ";color:var(--accent)}
-.slices .pending::before{content:"○ "}
-main{display:grid;grid-template-columns:1.1fr 1.15fr 1fr;gap:.9rem;min-height:0}
-.panel{border:1px solid var(--line);border-radius:10px;padding:.85rem .95rem;
-overflow:hidden;min-height:0;display:flex;flex-direction:column;background:var(--panel)}
-.rrow{display:grid;grid-template-columns:7.5em 1fr auto;gap:.7rem;
-align-items:center;padding:.34rem 0;font-size:.82rem}
-.rrow .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rrow .ct{font:0.72rem ui-monospace,Menlo,monospace;color:var(--dim);white-space:nowrap}
-.rrow .meter{width:auto;margin:0}
-.legend{color:var(--dim);font-size:.7rem;margin-top:auto;padding-top:.5rem}
-.legend i{display:inline-block;width:.65em;height:.65em;border-radius:2px;
-margin:0 .3em 0 .75em;vertical-align:baseline}
-.sub{font-size:.78rem;color:var(--dim)}
-.feed{font:0.72rem/1.5 ui-monospace,Menlo,monospace;overflow:hidden;min-height:0}
-.fl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:.1rem 0;
-border-bottom:1px solid var(--line)}
-.fl:last-child{border-bottom:none}
-.gap{margin-top:.8rem}
-.shots{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:.5rem;
-flex:1;min-height:0}
+.slices{display:flex;gap:.5rem;justify-content:center;margin-top:.5rem;overflow:hidden}
+.slices .chip .d{background:var(--line)}
+.slices .sl-done{color:var(--ink)}.slices .sl-done .d{background:var(--muted)}
+.slices .sl-active{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.slices .sl-active .d{background:var(--accent)}
+main{display:grid;grid-template-columns:1.05fr 1.15fr 1fr;gap:.8rem;min-height:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+padding:.8rem .9rem;overflow:hidden;min-height:0;display:flex;flex-direction:column;
+box-shadow:0 2px 8px rgb(0 0 0 / .5)}
+.panel .lbl{margin-bottom:.55rem}
+.rgrid{display:grid;grid-template-columns:max-content 1fr 2.6ch 2.6ch 2.9ch;
+gap:.3rem .55rem;align-items:center;font-size:.72rem}
+.rgrid .h{font:500 .6rem/1.2 var(--mono);color:var(--muted);text-align:right}
+.rgrid .nm{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:9em}
+.rgrid .n{font:400 .68rem/1.2 var(--mono);font-variant-numeric:tabular-nums;
+text-align:right;color:var(--muted)}
+.rgrid .n.on{color:var(--ink)}
+.dotln{width:.5rem;height:.5rem;border-radius:50%;flex:none;margin-top:.28rem}
+.dotln.ok{background:var(--accent)}
+.dotln.wait{background:transparent;border:1px solid var(--warn)}
+.dotln.idle{background:transparent;border:1px solid var(--line)}
+.play{margin-top:.7rem;padding-top:.55rem;border-top:1px solid var(--line);
+overflow:hidden;min-height:0;flex:1}
+.play .row{display:flex;gap:.5rem;padding:.22rem 0;align-items:flex-start}
+.play .id{font:500 .62rem/1.5 var(--mono);color:var(--muted);flex:none;width:2.6ch}
+.play .tx{font-size:.7rem;color:var(--ink);opacity:.85;overflow:hidden;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:.15rem .7rem;margin-bottom:.6rem}
+.kv .k{font:500 .62rem/1.6 var(--mono);color:var(--muted);white-space:nowrap}
+.kv .v{font-size:.72rem;color:var(--ink);overflow:hidden;display:-webkit-box;
+-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.feed{overflow:hidden;min-height:0}
+.feed .row{display:flex;gap:.55rem;padding:.3rem 0;border-bottom:1px solid var(--line);align-items:baseline}
+.feed .row:last-child{border-bottom:none}
+.feed .t{font:400 .62rem/1.5 var(--mono);color:var(--muted);flex:none}
+.feed .tag{font:500 .6rem/1.2 var(--mono);color:var(--muted);background:var(--raised);
+border:1px solid var(--line);border-radius:6px;padding:2px 6px;flex:none}
+.feed .tx{font-size:.7rem;color:var(--ink);opacity:.85;white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis}
+.gap{margin-top:.7rem}
+.shots{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:.5rem;flex:1;min-height:0}
 .shots figure{overflow:hidden;border-radius:6px;border:1px solid var(--line);
-position:relative;min-height:0}
+position:relative;min-height:0;cursor:pointer;background:var(--raised)}
 .shots img{width:100%;height:100%;object-fit:cover;display:block}
-.shots figcaption{position:absolute;left:0;right:0;bottom:0;font-size:.6rem;
-padding:.15rem .35rem;background:color-mix(in srgb,var(--bg) 82%,transparent);
-color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.empty{color:var(--dim);font-size:.82rem;margin:auto;text-align:center;padding:1rem}
-footer{display:flex;justify-content:space-between;gap:1rem;color:var(--dim);
-font-size:.68rem;white-space:nowrap;overflow:hidden}
+.shots figcaption{position:absolute;left:0;right:0;bottom:0;
+font:400 .58rem/1.4 var(--mono);padding:.15rem .35rem;
+background:rgb(11 11 11 / .78);color:var(--muted);
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{color:var(--muted);font-size:.72rem;margin:auto;text-align:center;padding:1rem}
+footer{display:flex;justify-content:space-between;gap:1rem;align-items:center;
+border-top:1px solid var(--line);padding-top:.45rem;
+font:400 .62rem/1.4 var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden}
 footer span{overflow:hidden;text-overflow:ellipsis}
+footer .d{display:inline-block;width:6px;height:6px;border-radius:50%;
+background:var(--accent);margin-right:.4rem;vertical-align:baseline}
+.lb{position:fixed;inset:0;display:none;background:rgb(0 0 0 / .6);z-index:9;
+align-items:center;justify-content:center;padding:2.5rem;cursor:pointer}
+.lb.open{display:flex}
+.lb figure{max-width:92vw;max-height:92vh;background:var(--surface);
+border:1px solid var(--line);border-radius:10px;overflow:hidden;
+box-shadow:0 8px 32px rgb(0 0 0 / .7);display:flex;flex-direction:column;min-height:0}
+.lb img{max-width:100%;min-height:0;object-fit:contain}
+.lb figcaption{font:400 .68rem/1.5 var(--mono);color:var(--muted);padding:.4rem .7rem}
 @media (max-width:900px),(orientation:portrait){
 body{height:auto;overflow:auto;grid-template-rows:none}
 main{grid-template-columns:1fr}
 h1{white-space:normal}
-.stepper{grid-template-columns:repeat(3,1fr);row-gap:.6rem}
+.stepper{grid-template-columns:repeat(3,1fr);row-gap:.5rem}
 .step::before{display:none}
 .slices{flex-wrap:wrap}}
 </style>
@@ -226,59 +323,90 @@ h1{white-space:normal}
 <header>
   <div class="id">
     <h1>${esc(goal || 'Forge run')}</h1>
-    <p class="badges">
-    ${shipped ? '<span class="ship">SHIPPED</span>' : armed ? '<span class="on">GATE ACTIVE</span>' : '<span>PRE-GREENLIGHT</span>'}
-    ${allLines.length ? `<span>${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open of ${allLines.length}</span>` : ''}
-    ${stackLine ? `<span>${esc(trunc(stackLine, 64))}</span>` : ''}
-    </p>
+    <div class="chips">
+    ${shipped ? '<span class="chip chip--ok"><span class="d"></span>shipped</span>'
+      : armed ? '<span class="chip chip--ok"><span class="d"></span>gate active</span>'
+      : '<span class="chip">pre-greenlight</span>'}
+    ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open</span>` : ''}
+    ${stackLine ? `<span class="chip">${esc(trunc(stackLine, 58))}</span>` : ''}
+    </div>
   </div>
   <div class="pct">
     <div class="n">${pct}%</div>
     <div class="cap">complete, estimated</div>
+    ${durationTxt || tokensTxt ? `<div class="cap">${[durationTxt ? `running ${durationTxt}` : '', tokensTxt ? `${tokensTxt} tokens` : ''].filter(Boolean).join(' · ')}</div>` : ''}
     ${allLines.length ? `<div class="meter"><span class="m-v" style="width:${(nVerified / allLines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(nEvidence / allLines.length * 100).toFixed(1)}%"></span></div>` : ''}
   </div>
 </header>
 
 <section>
-  <div class="plabel">Pipeline</div>
+  <div class="lbl">Pipeline</div>
   <div class="stepper">
-  ${PHASES.map(([name], i) => `<div class="step ${phaseState(i)}"><div class="dot"></div><span class="lbl">${esc(name)}</span></div>`).join('\n  ')}
+  ${PHASES.map(([name], i) => `<div class="step ${phaseState(i)}"><div class="dot"></div><span class="t">${esc(name)}</span></div>`).join('\n  ')}
   </div>
   ${sliceTitles.length ? `<div class="slices">
-  ${sliceTitles.map(s => `<span class="${s.n < curSlice ? 'done' : s.n === curSlice && !shipped ? 'active' : s.n === curSlice ? 'done' : 'pending'}">Slice ${s.n} · ${esc(trunc(s.title, 34))}</span>`).join('\n  ')}
+  ${sliceTitles.map(s => `<span class="chip ${s.n < curSlice || (s.n === curSlice && shipped) ? 'sl-done' : s.n === curSlice ? 'sl-active' : ''}"><span class="d"></span>slice ${s.n} · ${esc(trunc(s.title, 30))}</span>`).join('\n  ')}
   </div>` : ''}
 </section>
 
 <main>
   <div class="panel">
-    <div class="plabel">Rubric</div>
-    ${allLines.length ? sections.filter(s => s.lines.length).map(s => {
+    <div class="lbl">Rubric</div>
+    ${allLines.length ? `<div class="rgrid">
+    <span></span><span></span><span class="h" title="verified by the verifier">ok</span><span class="h" title="evidence recorded, awaiting the verifier">ev</span><span class="h">all</span>
+    ${sections.filter(s => s.lines.length).map(s => {
       const v = s.lines.filter(l => l.state === 'verified').length
       const e = s.lines.filter(l => l.state === 'evidence').length
-      return `<div class="rrow"><span class="nm">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${(v / s.lines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(e / s.lines.length * 100).toFixed(1)}%"></span></div><span class="ct">${v}✓ ${e}● ${s.lines.length}</span></div>`
-    }).join('\n') + `<p class="legend">verified by the verifier<i style="background:var(--good)"></i>evidence recorded, awaiting the verifier<i style="background:var(--mid)"></i>open</p>`
+      return `<span class="nm">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${(v / s.lines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(e / s.lines.length * 100).toFixed(1)}%"></span></div><span class="n${v ? ' on' : ''}">${v}</span><span class="n${e ? ' on' : ''}">${e}</span><span class="n">${s.lines.length}</span>`
+    }).join('\n    ')}
+    </div>
+    ${inPlay.length ? `<div class="play">
+    <div class="lbl">${esc(inPlayLabel)}</div>
+    ${inPlay.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(trunc(l.text, 150))}</span></div>`).join('\n    ')}
+    </div>` : ''}`
     : '<p class="empty">The rubric arrives with the plan. Nothing is measured before it exists.</p>'}
   </div>
 
   <div class="panel">
-    <div class="plabel">Activity</div>
-    ${resumeTop.length ? `<div class="feed">${feed(resumeTop.map(l => trunc(l, 150)))}</div>` : ''}
-    ${evTail.length ? `<div class="plabel gap">Evidence, newest first</div><div class="feed" style="flex:1">${feed(evTail)}</div>` : '<p class="sub gap">No evidence recorded yet.</p>'}
-    ${logTail.length ? `<div class="plabel gap">Dispatches</div><div class="feed">${feed(logTail)}</div>` : ''}
+    <div class="lbl">Activity</div>
+    ${resumeTop.length ? `<div class="kv">
+    ${resumeTop.map(([k, v]) => `<span class="k">${esc(k.toLowerCase())}</span><span class="v">${esc(trunc(v, 170))}</span>`).join('\n    ')}
+    </div>` : ''}
+    ${evTail.length ? `<div class="lbl">Evidence, newest first</div>
+    <div class="feed" style="flex:1">
+    ${evTail.map(r => `<div class="row"><span class="t">${esc(r.t)}</span><span class="tag">${esc(r.id)}</span><span class="tx">${esc(r.txt)}</span></div>`).join('\n    ')}
+    </div>` : '<p class="empty">No evidence recorded yet.</p>'}
+    ${logTail.length ? `<div class="lbl gap">Dispatches</div>
+    <div class="feed">
+    ${logTail.map(r => `<div class="row"><span class="t">${esc(r.t)}</span><span class="tag">${esc(trunc(r.id, 14))}</span><span class="tx">${esc(r.txt)}</span></div>`).join('\n    ')}
+    </div>` : ''}
   </div>
 
   <div class="panel">
-    <div class="plabel">Latest captures</div>
+    <div class="lbl">Latest captures</div>
     ${latest.length ? `<div class="shots">
-    ${latest.map(s => `<figure><img src="../${esc(s.p)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
+    ${latest.map(s => `<figure data-full="../${esc(s.p)}" data-cap="${esc(s.p)}"><img src="../${esc(s.p)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
     </div>` : '<p class="empty">Captures appear as the build starts producing screenshots.</p>'}
   </div>
 </main>
 
 <footer>
   <span>Drawn from .forge/ by scripts/progress.mjs after every dispatch, checkpoint, and evidence line. The state files win over this page.</span>
-  <span>estimate: gate 20 + rubric 80, evidence at half weight · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refreshes every 15 s</span>
+  <span><span class="d"></span>estimate: gate 20 + rubric 80, evidence at half weight · tokens sum every session transcript for this folder, cache reads included · rendered ${new Date().toISOString().replace(/\.\d+Z/, 'Z')} · refresh 15s</span>
 </footer>
+
+<div class="lb"><figure><img alt=""><figcaption></figcaption></figure></div>
+<script>
+setInterval(function(){if(!document.querySelector('.lb.open'))location.reload()},15000)
+document.addEventListener('click',function(e){
+  var lb=document.querySelector('.lb')
+  var f=e.target.closest('.shots figure')
+  if(f){lb.querySelector('img').src=f.dataset.full
+    lb.querySelector('figcaption').textContent=f.dataset.cap
+    lb.classList.add('open');return}
+  lb.classList.remove('open')
+})
+</script>
 </body></html>
 `
 

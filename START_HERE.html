@@ -550,13 +550,15 @@ tmux new -s forge
 claude
 # detach: Ctrl+B then D    reattach later: tmux attach -t forge</code></pre>
 <p>Watching a run: open <code>.forge/PROGRESS.html</code> in any browser
-tab. It is a wallboard built to fill one screen with no scrolling and no
-mouse: an overall completion estimate (gate work is 20 points, rubric
-lines the other 80, an evidence-recorded line counting half a verified
-one, and only shipping reads 100), the pipeline as a horizontal stepper
-with the slices under it, rubric health per section in three states (open,
-evidence recorded by the builder, verified by the verifier), the evidence
-and dispatch feeds, and the latest captures. The hooks regenerate it after
+tab. It is a wallboard built to fill one screen with no scrolling: an
+overall completion estimate (gate work is 20 points, rubric lines the
+other 80, an evidence-recorded line counting half a verified one, and only
+shipping reads 100), the run duration and token total, the pipeline as a
+horizontal stepper with the slices under it, rubric health per section in
+three states (open, evidence recorded by the builder, verified by the
+verifier) plus the current slice's lines in play, the evidence and
+dispatch feeds, and the latest captures, each opening full size on a
+click. The hooks regenerate it after
 every subagent stop, checkpoint, and evidence line, and the page reloads
 itself every 15 seconds, so a screen left on it tracks the run with no
 server and no setup. It is drawn from the state files and never edited by

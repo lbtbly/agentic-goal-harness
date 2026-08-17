@@ -187,6 +187,7 @@ if (firstTs) {
 const slug = process.cwd().replace(/[/.]/g, '-')
 const projDir = join(homedir(), '.claude', 'projects', slug)
 let tokensTxt = ''
+let tokCache = {}
 try {
   const files = []
   for (const f of readdirSync(projDir)) {
@@ -213,9 +214,13 @@ try {
         for (const line of chunk.slice(0, lastNl).split('\n')) {
           if (!line.includes('"usage"')) continue
           try {
-            const u = JSON.parse(line)?.message?.usage
-            if (u) c.tok += (u.input_tokens || 0) + (u.output_tokens || 0) +
-              (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)
+            const d = JSON.parse(line)
+            const u = d?.message?.usage
+            if (u) {
+              c.tok += (u.input_tokens || 0) + (u.output_tokens || 0) +
+                (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)
+              if (d.message.model) c.model = d.message.model
+            }
           } catch {}
         }
         c.off += lastNl + 1
@@ -224,6 +229,7 @@ try {
     }
   }
   writeFileSync(cachePath, JSON.stringify(cache))
+  tokCache = cache
   const total = Object.values(cache).reduce((a, c) => a + (c.tok || 0), 0)
   if (total > 0) tokensTxt = total >= 1e6 ? `${(total / 1e6).toFixed(1)}M` : `${Math.round(total / 1e3)}k`
 } catch {}
@@ -253,7 +259,20 @@ try {
         en = s.mtimeMs; st = s.birthtimeMs || null
         live = Date.now() - s.mtimeMs < 120000
       } catch {}
-      treeAgents.push({ id, dir: sub, type: m.agentType || 'agent', desc: m.description || '', depth: m.spawnDepth || 1, tu: m.toolUseId, st, en, live, parent: null })
+      const ck = `${sd}/agent-${id}.jsonl`
+      let tok = tokCache[ck] && tokCache[ck].tok || 0
+      let model = tokCache[ck] && tokCache[ck].model || ''
+      if (!model) {
+        // Files scanned before model capture existed: read the head once.
+        try {
+          const fd = openSync(join(sub, `agent-${id}.jsonl`), 'r')
+          const buf = Buffer.alloc(8192)
+          const n = readSync(fd, buf, 0, 8192, 0)
+          closeSync(fd)
+          model = (buf.toString('utf8', 0, n).match(/"model":"([^"]+)"/) || [, ''])[1]
+        } catch {}
+      }
+      treeAgents.push({ id, dir: sub, type: m.agentType || 'agent', desc: m.description || '', depth: m.spawnDepth || 1, tu: m.toolUseId, st, en, live, parent: null, tok, model })
     }
   }
   for (const a of treeAgents) {
@@ -267,13 +286,18 @@ try {
 } catch {}
 treeAgents.sort((a, b) => (a.st || 0) - (b.st || 0))
 const fmtDur = ms => { if (!ms || ms < 0) return ''; const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` }
+const fmtTok = t => t >= 1e6 ? `${(t / 1e6).toFixed(1)}M` : t >= 1000 ? `${Math.round(t / 1e3)}k` : `${t}`
+const shortModel = m => m.replace(/^claude-/, '').replace(/-\d{6,}$/, '')
+const hhmm = t => new Date(t).toTimeString().slice(0, 5)
 const kids = id => treeAgents.filter(a => a.parent === id)
 const renderNode = a =>
-  `<div class="tnode${a.live ? ' on' : ''}"><span class="tdot${a.live ? ' on' : ''}"></span><span class="tag">${esc(a.type)}</span><span class="tds">${esc(trunc(a.desc, 64))}</span><span class="tdu">${a.live ? 'running' : fmtDur((a.en || 0) - (a.st || a.en || 0))}</span></div>`
+  `<div class="tnode${a.live ? ' on' : ''}" title="${a.live ? 'running' : `ran ${fmtDur((a.en || 0) - (a.st || a.en || 0))}`}"><span class="tdot${a.live ? ' on' : ''}"></span><span class="tag">${esc(a.type)}</span><span class="tds">${esc(trunc(a.desc, 48))}</span>${a.model ? `<span class="tmk">${esc(shortModel(a.model))}</span>` : ''}${a.tok ? `<span class="tmk">${fmtTok(a.tok)}</span>` : ''}<span class="tdu">${a.live ? 'running' : a.en ? hhmm(a.en) : ''}</span></div>`
   + kids(a.id).map(k => `<div class="tkid">${renderNode(k)}</div>`).join('')
 const roots = treeAgents.filter(a => !a.parent)
+const cutoff = Date.now() - 30 * 60000
+const recent = roots.filter(a => a.live || (a.en && a.en >= cutoff))
 const TREE_MAX = 12
-const shownRoots = [...roots.filter(a => a.live), ...roots.filter(a => !a.live)].slice(0, TREE_MAX)
+const shownRoots = [...recent.filter(a => a.live), ...recent.filter(a => !a.live)].slice(0, TREE_MAX)
 const treeOmitted = roots.length - shownRoots.length
 const treeHtml = shownRoots.map(renderNode).join('\n    ')
 
@@ -449,6 +473,8 @@ overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .tnode.on .tds{color:var(--ink)}
 .tnode.on .tag{color:var(--ink)}
 .tnode .tdu{font:400 .62rem/1.5 var(--mono);color:var(--muted);flex:none}
+.tnode .tmk{font:400 .6rem/1.4 var(--mono);color:var(--muted);flex:none;
+background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:1px 5px}
 .tkid{margin-left:1.3rem}
 .shots{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:.5rem;flex:1;min-height:0}
 .shots figure{overflow:hidden;border-radius:6px;border:1px solid var(--line);
@@ -598,7 +624,7 @@ h1{white-space:normal}
 
   <div class="panel disp">
     <div class="phead"><span class="lbl"><span class="live ${liveCls}"></span>Dispatches · ${treeAgents.length} agent(s) · ${runEntries.length} stop(s) · last ${agoTxt}</span><div class="spark">${sparkBars}</div></div>
-    ${treeAgents.length ? `<div class="troot">lead · the session${treeOmitted > 0 ? ` · ${treeOmitted} earlier agent(s) not shown` : ''}</div>
+    ${treeAgents.length ? `<div class="troot">lead · the session${treeOmitted > 0 ? ` · ${treeOmitted} agent(s) finished more than 30 min ago, hidden` : ''}</div>
     <div class="tree">
     ${treeHtml}
     </div>

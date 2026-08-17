@@ -227,6 +227,13 @@ pipeline with a real one. Make an empty project and copy the harness in
 cp -R ../agentic-goal-harness/.claude ../agentic-goal-harness/scripts \
       ../agentic-goal-harness/CLAUDE.md .
 claude</code></pre>
+<p>Pick the session profile before you start:
+<code>/model claude-opus-5</code> and <code>/effort xhigh</code>. The
+judgment seats (designer, architect, verifier) inherit the session model, so
+this choice sets them too; reserve Fable 5 for goals that earn a flagship
+session. Do not use ultracode here: it opts the session into workflow
+orchestration, and an S goal like this one never uses a workflow. Save
+ultracode for opening L-sized build sessions.</p>
 <p>Then, at the prompt:</p>
 <pre><code>/forge "a one-page site that shows the current moon phase"</code></pre>
 <p>What you will see, phase by phase:</p>

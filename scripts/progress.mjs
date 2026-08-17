@@ -81,10 +81,15 @@ inPlay = inPlay.sort((a, b) => (a.state === 'open' ? 0 : 1) - (b.state === 'open
 // Pipeline cursor: the phase number in RESUME's next action first, else the
 // earliest keyword, with .md filenames stripped so PLAN.md is not read as PLAN.
 const PHASES = [
-  ['Intake', /intake/i], ['Size', /\bsize\b|router/i], ['Scout', /scout/i],
-  ['Design', /design\b(?!\.md)/i], ['Plan', /\bplan\b|architect/i],
-  ['Gate + arm', /greenlight|arm\b/i], ['Build', /build|slice|builder/i],
-  ['Verify', /verif/i], ['Ship', /ship|deploy|finisher/i],
+  ['Intake', /intake/i, 'three questions'],
+  ['Size', /\bsize\b|router/i, 'S, M, or L'],
+  ['Scout', /scout/i, 'market + rules'],
+  ['Design', /design\b(?!\.md)/i, 'panel + screens'],
+  ['Plan', /\bplan\b|architect/i, 'slices + rubric'],
+  ['Gate + arm', /greenlight|arm\b/i, 'the one stop'],
+  ['Build', /build|slice|builder/i, 'slice by slice'],
+  ['Verify', /verif/i, 'evidence rules'],
+  ['Ship', /ship|deploy|finisher/i, 'deploy + report'],
 ]
 const nextAction = (resume.match(/Next action:\s*([^\n]*)/i) || [, ''])[1]
 const numMap = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 5, 8: 6, 9: 7, 10: 8 }
@@ -263,24 +268,36 @@ background:var(--raised);color:var(--muted);border:1px solid var(--line)}
 border-radius:99px;overflow:hidden;display:flex}
 .pct .meter{margin-top:.4rem;width:10.5rem}
 .m-v{background:var(--accent)}.m-e{background:var(--warn)}
-.stepper{display:grid;grid-template-columns:repeat(9,1fr);padding:.35rem 0 .1rem}
-.step{text-align:center;position:relative;color:var(--muted);
-font-size:1rem;font-weight:500;letter-spacing:-.01em}
-.step::before{content:"";position:absolute;top:.7rem;right:50%;width:100%;height:2px;background:var(--line)}
-.step:first-child::before{display:none}
-.step .dot{width:1.1rem;height:1.1rem;border-radius:50%;background:var(--raised);
-border:2px solid var(--line);margin:0 auto .45rem;position:relative}
-.step.done{color:var(--ink)}.step.done .dot{background:var(--muted);border-color:var(--muted)}
-.step.done::before{background:var(--muted)}
-.step.active{color:var(--ink)}
-.step.active .dot{background:var(--accent);border-color:var(--accent)}
-.step.active::before{background:var(--muted)}
-.step.skipped .t{text-decoration:line-through;font-weight:400}
+.graph{display:flex;align-items:stretch;padding:.45rem 0 .15rem}
+.pnode{flex:3;min-width:0;background:var(--surface);border:1px solid var(--line);
+border-radius:10px;padding:.6rem .75rem .55rem;box-shadow:0 2px 8px rgb(0 0 0 / .5)}
+.pnode .ph{display:flex;align-items:center;gap:.5rem;min-width:0}
+.pdot{width:.6rem;height:.6rem;border-radius:50%;background:var(--raised);
+border:1px solid var(--line);flex:none}
+.pt{font-size:1.1rem;font-weight:500;letter-spacing:-.01em;color:var(--muted);
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps{font:400 .62rem/1.4 var(--mono);color:var(--muted);margin:.2rem 0 0 1.1rem;
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pnode.done .pt{color:var(--ink)}
+.pnode.done .pdot{background:var(--muted);border-color:var(--muted)}
+.pnode.active{border-color:var(--accent);
+box-shadow:0 0 0 1px var(--accent),0 2px 8px rgb(0 0 0 / .5)}
+.pnode.active .pt{color:var(--ink)}
+.pnode.active .pdot{background:var(--accent);border-color:var(--accent)}
+.pnode.pending{opacity:.6}
+.pnode.skipped{opacity:.45}.pnode.skipped .pt{text-decoration:line-through}
+.wire{flex:1;min-width:.7rem;align-self:center;height:2px;background:var(--line);
+position:relative;margin:0 -1px;z-index:0}
+.wire::after{content:"";position:absolute;right:0;top:-3px;
+border-left:6px solid var(--line);border-top:4px solid transparent;
+border-bottom:4px solid transparent}
+.wire.w-done{background:var(--muted)}.wire.w-done::after{border-left-color:var(--muted)}
+.wire.w-live{background:var(--accent)}.wire.w-live::after{border-left-color:var(--accent)}
 @media (prefers-reduced-motion:no-preference){
-.step.active .dot{animation:pulse 1.6s ease-in-out infinite}
+.pnode.active .pdot{animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}}
 .slices{display:flex;gap:.6rem;justify-content:center;margin-top:.6rem;overflow:hidden}
-.slices .chip{font-size:.7rem;padding:4px 10px}
+.slices .chip{font-size:.75rem;padding:5px 11px}
 .slices .chip .d{background:var(--line)}
 .slices .sl-done{color:var(--ink)}.slices .sl-done .d{background:var(--muted)}
 .slices .sl-active{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
@@ -352,8 +369,9 @@ box-shadow:0 8px 32px rgb(0 0 0 / .7);display:flex;flex-direction:column;min-hei
 body{height:auto;overflow:auto;grid-template-rows:none}
 main{grid-template-columns:1fr}
 h1{white-space:normal}
-.stepper{grid-template-columns:repeat(3,1fr);row-gap:.5rem}
-.step::before{display:none}
+.graph{flex-wrap:wrap;gap:.5rem}
+.pnode{flex:1 1 30%}
+.wire{display:none}
 .slices{flex-wrap:wrap}}
 </style>
 </head>
@@ -379,8 +397,14 @@ h1{white-space:normal}
 
 <section>
   <div class="lbl">Pipeline</div>
-  <div class="stepper">
-  ${PHASES.map(([name], i) => `<div class="step ${phaseState(i)}"><div class="dot"></div><span class="t">${esc(name)}</span></div>`).join('\n  ')}
+  <div class="graph">
+  ${PHASES.map(([name, , sub], i) => {
+    const st = phaseState(i)
+    const node = `<div class="pnode ${st}"><div class="ph"><span class="pdot"></span><span class="pt">${esc(name)}</span></div><div class="ps">${st === 'skipped' ? 'skipped' : esc(sub)}</div></div>`
+    const wire = i < PHASES.length - 1
+      ? `<div class="wire ${i + 1 < active ? 'w-done' : i + 1 === active ? 'w-live' : ''}"></div>` : ''
+    return node + wire
+  }).join('\n  ')}
   </div>
   ${sliceTitles.length ? `<div class="slices">
   ${sliceTitles.map(s => `<span class="chip ${s.n < curSlice || (s.n === curSlice && shipped) ? 'sl-done' : s.n === curSlice ? 'sl-active' : ''}"><span class="d"></span>slice ${s.n} · ${esc(trunc(s.title, 30))}</span>`).join('\n  ')}

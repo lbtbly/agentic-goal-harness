@@ -7,3 +7,12 @@
 {"ts":"2026-08-18T09:06:18Z","sid":"main","kind":"subagent_fail","key":""}
 {"ts":"2026-08-18T09:09:23Z","sid":"main","kind":"subagent_fail","key":""}
 {"ts":"2026-08-18T12:13:42Z","sid":"main","kind":"session_end","key":"prompt_input_exit","guardBlocks":0,"toolErrors":0,"userCorrections":2,"dirtyTree":true}
+{"ts":"2026-08-18T12:52:35Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T13:30:13Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T17:02:45Z","sid":"main","kind":"user_correction","key":"contradiction","length":"long"}
+{"ts":"2026-08-18T17:17:41Z","sid":"main","kind":"guard_block","key":"secret_guard","severity":"security"}
+{"ts":"2026-08-18T17:18:05Z","sid":"main","kind":"guard_block","key":"secret_guard","severity":"security"}
+{"ts":"2026-08-18T17:18:17Z","sid":"main","kind":"guard_block","key":"secret_guard","severity":"security"}
+{"ts":"2026-08-18T17:18:25Z","sid":"main","kind":"guard_block","key":"secret_guard","severity":"security"}
+{"ts":"2026-08-18T17:20:01Z","sid":"main","kind":"guard_block","key":"secret_guard","severity":"security"}
+{"ts":"2026-08-18T17:24:42Z","sid":"main","kind":"subagent_fail","key":""}

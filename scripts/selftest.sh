@@ -329,6 +329,28 @@ if command -v node >/dev/null 2>&1; then
   SC=$(grep -o 'srow s-cap' "$H" | wc -l | tr -d ' ')
   [ "$SC" -eq 1 ] && ok "screenmap counts captures by exact screen token" \
     || fail "screenmap miscounted captures (s-cap=$SC)"
+
+  # Captures get filed per slice. A flat readdir returns the SUBDIRECTORY NAME
+  # as if it were a file, so a screen whose captures all live one level down
+  # counts zero and the panel says "0 of 7" with total confidence. Run two hit
+  # this with .forge/shots/slice1/.
+  rm -f "$T4/.forge/evidence/"*.png
+  mkdir -p "$T4/.forge/evidence/slice1"
+  : > "$T4/.forge/evidence/slice1/d5-01-aisle-dark-390.png"
+  : > "$T4/.forge/evidence/slice1/d5-01-aisle-light-390.png"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  SUB=$(grep -o 'srow s-cap' "$H" | wc -l | tr -d ' ')
+  [ "$SUB" -eq 1 ] && ok "screenmap sees captures filed in a subdirectory" \
+    || fail "screenmap blind to nested captures (s-cap=$SUB)"
+  # And the copy in .forge/shots must not be counted a second time.
+  mkdir -p "$T4/.forge/shots"
+  : > "$T4/.forge/shots/ab12cd34-d5-01-aisle-dark-390.png"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  TITLE=$(grep -o 'title="Aisle check[^"]*"' "$H" | head -1)
+  case "$TITLE" in
+    *"2 capture(s)"*) ok "the shots copy is not counted twice" ;;
+    *) fail "capture double-count returned: $TITLE" ;;
+  esac
   rm -rf "$T4"
 else
   fail "node not found; progress renderer unchecked"

@@ -13,7 +13,21 @@ if (!existsSync('.forge')) process.exit(0)
 const read = f => { try { return readFileSync(f, 'utf8') } catch { return '' } }
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const trunc = (s, n) => s.length > n ? s.slice(0, n - 3) + '...' : s
-const safeDir = d => { try { return readdirSync(d) } catch { return [] } }
+// Recursive, because captures get filed per slice. Slice 1 wrote eleven of them
+// into .forge/shots/slice1/ and a flat readdir returned the single string
+// "slice1", so the screenmap counted zero captures for the whole run and said
+// so confidently. A counter that reads a directory name as a file is the same
+// defect class as a sweep that reports clean over an empty set.
+const safeDir = (d, depth = 4) => {
+  let out = []
+  let entries
+  try { entries = readdirSync(d, { withFileTypes: true }) } catch { return [] }
+  for (const e of entries) {
+    if (e.isDirectory()) { if (depth > 0) out = out.concat(safeDir(`${d}/${e.name}`, depth - 1)) }
+    else out.push(e.name)
+  }
+  return out
+}
 
 const brief = read('.forge/BRIEF.md')
 const design = read('.forge/DESIGN.md')

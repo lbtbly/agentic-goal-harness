@@ -19,7 +19,12 @@ Produce two files and nothing else.
   palette stance, type stance, one signature element, drawn from the taste
   references. The builder never improvises taste.
 - Vertical slices, each crossing every layer, each independently verifiable,
-  ordered so the core loop ships first.
+  ordered so the core loop ships first. A slice is one builder dispatch, epic
+  sized, never initiative sized: when its Closes list passes roughly a dozen
+  rubric lines, split it. The goal is the only initiative in the run, and the
+  escalation ladder only works when a slice is small enough to re-do cheaply.
+- Each slice opens with one sentence naming who it serves and what they can
+  do when it lands: the user story, written as an outcome, not a wish.
 
 .forge/DOD.md, under these rubric rules:
 - Every line is a markdown checkbox, verifiable by a command or a screenshot.

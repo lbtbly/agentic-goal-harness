@@ -27,10 +27,17 @@ satisfied() {
       NAME=${REST%%:*}
       WANT=${REST#*:}
       command -v "$NAME" >/dev/null 2>&1 || { DETAIL="not on PATH"; return 1; }
+      # GOT is reduced to its leading integer, so WANT must be too: the compare
+      # was only ever major-versus-major. Written with a dot, "cmd:node:20.11"
+      # made `[ -lt ]` exit 2 for a bad operand, and `&&` reads status 2 exactly
+      # like "new enough", so every version requirement reported satisfied no
+      # matter how old the installed tool was.
+      WANT=${WANT%%.*}
+      case "$WANT" in ''|*[!0-9]*) WANT="" ;; esac
       if [ "$WANT" != "$REST" ] && [ -n "$WANT" ]; then
         GOT=$("$NAME" --version 2>/dev/null | grep -oE '[0-9]+' | head -1)
-        [ -z "$GOT" ] && { DETAIL="version unreadable"; return 1; }
-        [ "$GOT" -lt "$WANT" ] 2>/dev/null && { DETAIL="found v$GOT, need $WANT+"; return 1; }
+        case "$GOT" in ''|*[!0-9]*) DETAIL="version unreadable"; return 1 ;; esac
+        if [ "$GOT" -lt "$WANT" ]; then DETAIL="found v$GOT, need $WANT+"; return 1; fi
         DETAIL="found v$GOT"
       else
         DETAIL="found"
@@ -55,7 +62,13 @@ satisfied() {
 OUT=0; TOTAL=0
 echo "Before this can reach a live URL"
 echo
-while IFS= read -r LINE; do
+# `|| [ -n "$LINE" ]` keeps the final line of a file that does not end in a
+# newline. Without it that requirement is dropped, never counted, and so can
+# never be reported outstanding: the script prints "Nothing is waiting on you"
+# precisely when something is. This is the report the operator trusts to be
+# complete, and its whole reason for existing is that run one found a missing
+# prerequisite too late.
+while IFS= read -r LINE || [ -n "$LINE" ]; do
   case "$LINE" in
     "- ["*"] "*"|"*) ;;
     *) continue ;;

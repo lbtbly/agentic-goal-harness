@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 # PreToolUse gate on Bash. Five rules, nothing else. Exit 2 blocks the call.
 INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("tool_input",{}).get("command",""))' 2>/dev/null)
+CMD=""
+if command -v python3 >/dev/null 2>&1; then
+  CMD=$(printf '%s' "$INPUT" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("tool_input",{}).get("command",""))' 2>/dev/null)
+fi
+# An empty CMD used to mean both "the payload carried no command" and "I could
+# not parse the payload", and both allowed the call. So one missing interpreter
+# turned all five rules off, on a machine that looks fine, with no output
+# anywhere. Stock macOS without the Xcode command line tools ships a python3
+# stub that does exactly this. A safety gate fails CLOSED: when there is a
+# payload but no usable parse, match the rules against the raw text instead.
+if [ -z "$CMD" ] && [ -n "$INPUT" ]; then
+  CMD=$INPUT
+  echo "forge guard: payload unparsed, matching rules against the raw text" >&2
+fi
 [ -z "$CMD" ] && exit 0
 
 deny() { echo "forge guard: $1" >&2; exit 2; }

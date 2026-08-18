@@ -1,29 +1,33 @@
 #!/usr/bin/env bash
 # Regression harness for the forge enforcement layer. Run it after any Claude
 # Code update; drift recurs and this is the one-command answer.
-# Checks: the nine scripts no-op outside a forge project, behave against a
+# Checks: every script no-ops outside a forge project, behave against a
 # fixture .forge/, dod-gate blocks and releases correctly, rehydrate labels
 # both arming states, the four workflows parse, settings.json and every agent
 # frontmatter parse. Exits non-zero on any failure.
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 S="$ROOT/scripts"
-NINE="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh"
+# Every script, not a frozen list of nine: commit.sh and preflight.sh shipped
+# with no assertion that they stay silent and side-effect-free outside a
+# forge project, which is the guarantee this loop exists to hold.
+ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh commit.sh preflight.sh"
 FAILS=0
 ok()   { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; FAILS=$((FAILS+1)); }
 
 # 0. Every script is executable.
-for f in $NINE selftest.sh; do
+for f in $ALL selftest.sh; do
   [ -x "$S/$f" ] && ok "executable: $f" || fail "not executable: $f"
 done
 
 # 1. No-op outside a forge project: exit 0, zero files created.
 T1=$(mktemp -d)
-for f in $NINE; do
+for f in $ALL; do
   case "$f" in
     guard.sh|runlog.sh|checkpoint.sh) echo '{}' | CLAUDE_PROJECT_DIR="$T1" "$S/$f" >/dev/null 2>&1 ;;
     evidence.sh) CLAUDE_PROJECT_DIR="$T1" "$S/$f" "line" "proof" >/dev/null 2>&1 ;;
+    commit.sh) CLAUDE_PROJECT_DIR="$T1" "$S/$f" "msg" >/dev/null 2>&1 ;;
     *) CLAUDE_PROJECT_DIR="$T1" "$S/$f" >/dev/null 2>&1 ;;
   esac
   RC=$?
@@ -153,6 +157,118 @@ OUT=$(CLAUDE_PROJECT_DIR="$T7" "$S/preflight.sh" 2>&1)
 printf '%s' "$OUT" | grep -q 'set in .env.local' \
   && ok "preflight reads a variable from a dotenv file" || fail "preflight missed a dotenv var"
 rm -rf "$T7"
+
+# 3e. What the adversarial audit confirmed. Every case below FAILED before its
+# fix, and each is here because the earlier fixture could not have caught it.
+AUD=$(mktemp -d)
+mkdir -p "$AUD/badbin"
+{ echo '#!/bin/bash'
+  echo 'echo "xcrun: error: invalid active developer path" >&2'
+  echo 'exit 1'; } > "$AUD/badbin/python3"
+chmod +x "$AUD/badbin/python3"
+
+# THE LIVELOCK, second edition. The first fix read stop_hook_active through
+# python3 and treated "could not read" as "flag is false", so a machine whose
+# python3 is missing or broken blocks every stop forever. The condition never
+# clears, because it is a property of the machine and not of the run.
+AG="$AUD/gate"; mkdir -p "$AG/.forge" "$AG/scripts"
+cp "$S/dod-gate.sh" "$AG/scripts/"
+{ echo '#!/bin/bash'; echo 'exit 0'; } > "$AG/scripts/commit.sh"; chmod +x "$AG/scripts/commit.sh"
+printf -- '- [ ] one\n' > "$AG/.forge/DOD.md"; touch "$AG/.forge/ARMED"
+BLOCKED=0
+for i in 1 2 3; do
+  printf '{"stop_hook_active":true}' \
+    | env PATH="$AUD/badbin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="$AG" bash "$AG/scripts/dod-gate.sh" >/dev/null 2>&1
+  [ $? -eq 2 ] && BLOCKED=$((BLOCKED+1))
+done
+{ [ "$BLOCKED" -eq 0 ] && [ -f "$AG/.forge/PARKED" ]; } \
+  && ok "dod-gate yields when the payload cannot be parsed" \
+  || fail "dod-gate livelocks with a broken python3 ($BLOCKED/3 blocked)"
+
+# A park record that outlives the park tells the next session a false number.
+rm -f "$AG/.forge/PARKED"; printf 'stale\n' > "$AG/.forge/PARKED"
+echo '{}' | CLAUDE_PROJECT_DIR="$AG" bash "$AG/scripts/dod-gate.sh" >/dev/null 2>&1
+[ -f "$AG/.forge/PARKED" ] && fail "stale PARKED survived a working turn" \
+  || ok "dod-gate clears PARKED when the run has work"
+printf 'stale\n' > "$AG/.forge/PARKED"; printf -- '- [x] one\n' > "$AG/.forge/DOD.md"
+echo '{}' | CLAUDE_PROJECT_DIR="$AG" bash "$AG/scripts/dod-gate.sh" >/dev/null 2>&1
+[ -f "$AG/.forge/PARKED" ] && fail "PARKED survived completion" \
+  || ok "dod-gate retires PARKED at zero unchecked"
+
+# The guard used to read "I cannot parse this" as "there is nothing to check",
+# so one broken interpreter silently switched off all five safety rules.
+printf '{"tool_input":{"command":"git push --force origin main"}}' \
+  | env PATH="$AUD/badbin:/usr/bin:/bin" bash "$S/guard.sh" >/dev/null 2>&1
+[ $? -eq 2 ] && ok "guard fails closed when the payload cannot be parsed" \
+  || fail "guard fails OPEN without a usable python3"
+
+# "Cannot find module" is the literal wording of TS2307, the commonest real
+# TypeScript error there is. Deciding from the message swallowed it.
+AC="$AUD/checks"; mkdir -p "$AC/node_modules"
+printf '{"name":"x","scripts":{"typecheck":"node ./fail.js"}}\n' > "$AC/package.json"
+{ echo 'console.error("a.ts(1,1): error TS2307: Cannot find module \"@/lib/db\".");'
+  echo 'process.exit(1);'; } > "$AC/fail.js"
+printf '{"tool_input":{"file_path":"x"}}' | ( cd "$AC" && CLAUDE_PROJECT_DIR="$AC" bash "$S/checks.sh" >/dev/null 2>&1 )
+[ $? -eq 2 ] && ok "checks blocks a real TS2307 saying Cannot find module" \
+  || fail "checks swallowed a genuine typecheck failure"
+AC2="$AUD/checks2"; mkdir -p "$AC2/node_modules"
+printf '{"name":"x","scripts":{"typecheck":"definitely-not-a-real-binary-xyz"}}\n' > "$AC2/package.json"
+printf '{"tool_input":{"file_path":"x"}}' | ( cd "$AC2" && CLAUDE_PROJECT_DIR="$AC2" bash "$S/checks.sh" >/dev/null 2>&1 )
+[ $? -eq 0 ] && ok "checks stands down when the binary is genuinely absent" \
+  || fail "checks blocked on a missing binary"
+
+# `[ -lt ]` has three outcomes and the code read two: a non-integer operand
+# exits 2, and && reads that exactly like "new enough".
+APF="$AUD/pf"; mkdir -p "$APF/.forge" "$APF/oldbin"
+{ echo '#!/bin/bash'; echo 'echo v8.17.0'; } > "$APF/oldbin/node"; chmod +x "$APF/oldbin/node"
+printf -- '- [ ] cmd:node:20.11 | Node 20.11+ | nodejs.org\n' > "$APF/.forge/PREFLIGHT.md"
+env PATH="$APF/oldbin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="$APF" bash "$S/preflight.sh" 2>&1 \
+  | grep -q '1 of 1 outstanding' \
+  && ok "preflight compares a dotted version minimum" \
+  || fail "preflight reports satisfied for a dotted minimum"
+
+# read's status is the loop condition, so a file with no trailing newline lost
+# its last line, and lost it in the direction of "nothing is waiting on you".
+APF2="$AUD/pf2"; mkdir -p "$APF2/.forge"
+printf -- '- [ ] cmd:sh | A shell | x\n- [ ] cmd:nosuchcmd77 | Missing | install' > "$APF2/.forge/PREFLIGHT.md"
+CLAUDE_PROJECT_DIR="$APF2" bash "$S/preflight.sh" 2>&1 | grep -q '1 of 2 outstanding' \
+  && ok "preflight keeps a last line with no trailing newline" \
+  || fail "preflight dropped the last requirement"
+
+# The throttle is the only thing standing between 1126 subagent stops and 1126
+# commits, and a worded value made it fail open.
+AR="$AUD/repo"; mkdir -p "$AR/.forge"
+( cd "$AR" && git init -q . && git config user.email t@t && git config user.name t \
+  && echo a > a.txt && git add -A && git commit -q -m base ) >/dev/null 2>&1
+( cd "$AR" && echo b > b.txt && CLAUDE_PROJECT_DIR="$AR" bash "$S/commit.sh" "one" ) >/dev/null 2>&1
+( cd "$AR" && echo c > c.txt && FORGE_COMMIT_WINDOW=soon CLAUDE_PROJECT_DIR="$AR" bash "$S/commit.sh" "two" ) >/dev/null 2>&1
+N=$( cd "$AR" && git rev-list --count HEAD )
+[ "$N" -eq 2 ] && ok "commit throttle survives a non-integer window" \
+  || fail "a worded window disabled the throttle (n=$N)"
+
+# The refusal used to stage everything, then git reset, discarding a hand-built
+# index, and report nothing to callers who all redirect stderr to /dev/null.
+AL="$AUD/leak"; mkdir -p "$AL/.forge"
+( cd "$AL" && git init -q . && git config user.email t@t && git config user.name t \
+  && echo a > a.txt && git add -A && git commit -q -m base ) >/dev/null 2>&1
+( cd "$AL" && echo x > wanted.txt && printf 'k\n' > server.pem && git add wanted.txt ) >/dev/null 2>&1
+( cd "$AL" && FORGE_COMMIT_WINDOW=0 CLAUDE_PROJECT_DIR="$AL" bash "$S/commit.sh" --now "leak" ) >/dev/null 2>&1
+STAGED=$( cd "$AL" && git diff --cached --name-only | tr '\n' ' ' )
+N=$( cd "$AL" && git rev-list --count HEAD )
+case "$STAGED" in
+  *wanted.txt*) [ "$N" -eq 1 ] && [ -f "$AL/.forge/COMMIT-BLOCKED" ] \
+      && ok "commit refuses a leak without wiping the index, and says so on disk" \
+      || fail "leak refusal: committed=$N record=$([ -f "$AL/.forge/COMMIT-BLOCKED" ] && echo yes || echo no)" ;;
+  *) fail "leak refusal wiped the hand-staged index ('$STAGED')" ;;
+esac
+( cd "$AL" && printf 'server.pem\n' > .forge/commit-allow \
+  && FORGE_COMMIT_WINDOW=0 CLAUDE_PROJECT_DIR="$AL" bash "$S/commit.sh" --now "allowed" ) >/dev/null 2>&1
+N=$( cd "$AL" && git rev-list --count HEAD )
+{ [ "$N" -eq 2 ] && [ ! -f "$AL/.forge/COMMIT-BLOCKED" ]; } \
+  && ok "commit-allow releases the refusal and clears the record" \
+  || fail "allow-list ignored (n=$N)"
+
+rm -rf "$AUD"
 
 # 4. rehydrate labels both arming states.
 printf '# Plan\n\n/goal Every line of .forge/DOD.md checked, with evidence recorded in .forge/EVIDENCE.md, and a PASS verdict from the verifier agent.\n' > "$T2/.forge/PLAN.md"

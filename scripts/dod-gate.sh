@@ -16,26 +16,55 @@ cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 [ -f .forge/ARMED ] || exit 0
 [ -f .forge/DOD.md ] || exit 0
 
-LEFT=$(grep -c '^- \[ \]' .forge/DOD.md 2>/dev/null || true)
-[ "${LEFT:-0}" -eq 0 ] && exit 0
+# grep -c PRINTS the count and EXITS 1 when nothing matches, so a `|| echo N`
+# fallback appends a second line and the arithmetic below dies on "0\n0". Keep
+# the count, drop the status, then insist on a number.
+num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
+LEFT=$(num "$(grep -c '^- \[ \]' .forge/DOD.md 2>/dev/null || true)")
+if [ "$LEFT" -eq 0 ]; then
+  # Nothing unchecked. The run is done here, so retire any park record rather
+  # than leaving it to greet the next session with numbers that are now false.
+  rm -f .forge/PARKED
+  exit 0
+fi
 
 # Read the payload. Bounded, because a gate that blocks on an idle pipe fails
 # exactly the way the livelock did: silently, and for the whole turn.
 INPUT=""
 [ -t 0 ] || IFS= read -r -d '' -t 2 INPUT 2>/dev/null || true
-ACTIVE=$(printf '%s' "$INPUT" | python3 -c \
-  'import json,sys;print("1" if json.load(sys.stdin).get("stop_hook_active") else "")' 2>/dev/null)
 
-if [ -n "$ACTIVE" ]; then
+# Three outcomes, and they must stay distinct: the flag is set, the flag is
+# explicitly unset, or the payload could not be read at all. The first version
+# of this fix collapsed the third into the second, which reinstates the very
+# livelock it was written to end: on a machine whose python3 is missing or
+# broken (stock macOS without the Xcode command line tools ships exactly such a
+# stub) every stop reads as "flag not set" and blocks forever, and the
+# condition never clears because it is a property of the machine.
+#
+# The safe default is inverted from the obvious one. Yielding wrongly costs one
+# missed reminder. Blocking wrongly cannot be escaped from inside the run.
+ACTIVE=""
+if command -v python3 >/dev/null 2>&1; then
+  ACTIVE=$(printf '%s' "$INPUT" | python3 -c \
+    'import json,sys;print("1" if json.load(sys.stdin).get("stop_hook_active") else "0")' 2>/dev/null)
+fi
+case "$ACTIVE" in
+  0|1) ;;                                  # the interpreter answered, trust it
+  *) if [ -z "$INPUT" ]; then
+       ACTIVE=1                            # nothing to read at all: yield
+     else
+       case "$INPUT" in                    # no interpreter, read the raw text
+         *stop_hook_active*[Tt]rue*) ACTIVE=1 ;;
+         *) ACTIVE=0 ;;
+       esac
+     fi ;;
+esac
+
+if [ "$ACTIVE" = 1 ]; then
   # The reminder already landed this turn and the run still wants to stop.
   # Record the park so the next session opens on it, and commit so nothing
   # rests only on disk.
-  # grep -c prints 0 AND exits 1 when nothing matches, so `|| echo 0` appends a
-  # second line and the arithmetic below dies on "0\n0 + LEFT". Every run before
-  # its first verdict has zero checked lines, which is precisely when the park is
-  # most likely to be written. `|| true` keeps the count and drops the status.
-  DONE=$(grep -c '^- \[x\]' .forge/DOD.md 2>/dev/null || true)
-  DONE=${DONE:-0}
+  DONE=$(num "$(grep -c '^- \[x\]' .forge/DOD.md 2>/dev/null || true)")
   {
     printf 'parked %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '%s of %s rubric line(s) checked, %s unchecked\n' \
@@ -46,6 +75,8 @@ if [ -n "$ACTIVE" ]; then
   exit 0
 fi
 
+# Still blocking means the run is working, so the park record is stale.
+rm -f .forge/PARKED
 {
   echo "forge gate: $LEFT rubric line(s) unchecked. Not done. Next unchecked:"
   grep '^- \[ \]' .forge/DOD.md | head -5

@@ -15,7 +15,15 @@ has() { python3 -c "import json;print('$1' in json.load(open('package.json')).ge
 run() {
   has "$1" || return 0
   OUT=$($PM run -s "$1" 2>&1) && return 0
-  if printf '%s' "$OUT" | grep -qE 'command not found|not recognized|Cannot find module|ERR_MODULE_NOT_FOUND'; then
+  RC=$?
+  # Ask the PROCESS, not the prose. 127 is the shell's "binary not found",
+  # which is what a half-installed tree produces; a check that ran and failed
+  # exits 1. The message cannot carry this distinction: "Cannot find module" is
+  # the literal wording of TS2307, the most common real TypeScript error there
+  # is, and it is exactly what a builder importing a not-yet-created file
+  # produces. Reading that as "tooling missing" turns the gate off at the
+  # moment it matters most.
+  if [ "$RC" -eq 127 ] || [ ! -d node_modules ]; then
     echo "checks: $1 could not run, its tooling is not installed yet" >&2
     return 0
   fi

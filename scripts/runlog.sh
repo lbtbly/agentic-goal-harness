@@ -10,9 +10,9 @@ command -v node >/dev/null 2>&1 && node "$HERE/progress.mjs" >/dev/null 2>&1
 # Throttled safety commit. A subagent finishing is the most frequent natural
 # boundary in a run; run one had 1126 of them, so this must never commit per
 # stop. commit.sh holds the window.
-LEFT=$(grep -c '^- \[ \]' .forge/DOD.md 2>/dev/null || echo 0)
-DONE=$(grep -c '^- \[x\]' .forge/DOD.md 2>/dev/null || echo 0)
-case "$LEFT$DONE" in *[!0-9]*) LEFT=0; DONE=0 ;; esac
+num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
+LEFT=$(num "$(grep -c '^- \[ \]' .forge/DOD.md 2>/dev/null || true)")
+DONE=$(num "$(grep -c '^- \[x\]' .forge/DOD.md 2>/dev/null || true)")
 if [ $(( DONE + LEFT )) -gt 0 ]; then
   MSG="forge: checkpoint, $DONE of $(( DONE + LEFT )) lines"
 else

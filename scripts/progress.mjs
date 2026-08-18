@@ -168,8 +168,15 @@ for (const [n, body] of Object.entries(sliceBodies)) {
 
 // Captures per screen: a filename token equal to the zero-padded number.
 // Exact-token matching keeps "390" and "1440" out of it.
-const captureNames = [...safeDir('.forge/evidence'), ...safeDir('.forge/shots')]
-  .map(f => f.replace(/\.[a-z0-9]+$/i, '').split('-'))
+// .forge/shots holds this script's OWN copies, named `<hash>-<basename>`, so
+// unioning the two directories counted every capture twice from the second
+// render onward: once as the original, once as the copy. Render one was right
+// and every render after it inflated, which is the worst shape a counter has.
+// Strip the hash and dedupe on the basename.
+const captureNames = [...new Set([
+  ...safeDir('.forge/evidence'),
+  ...safeDir('.forge/shots').map(f => f.replace(/^[0-9a-f]{1,8}-/, '')),
+])].map(f => f.replace(/\.[a-z0-9]+$/i, '').split('-'))
 const screenShots = n => captureNames.filter(t => t.includes(String(n).padStart(2, '0'))).length
 
 // Routes the run declares, from RESUME's screen table. Scoped to a table whose
@@ -425,7 +432,14 @@ try {
             }
           } catch {}
         }
-        c.off += lastNl + 1
+        // c.off is a BYTE offset fed to readSync; lastNl is an index into the
+        // decoded string, in UTF-16 units. Any multi-byte character in the
+        // chunk makes the string shorter than the bytes it came from, so the
+        // stored offset lands short of the true line end and the next render
+        // re-reads that tail. Whole records fall inside it, parse fine, and
+        // their usage is added again. c.tok is persisted and monotonic, so the
+        // inflation compounds on every render and never washes out.
+        c.off += Buffer.byteLength(chunk.slice(0, lastNl + 1), 'utf8')
       }
       cache[f] = c
     }

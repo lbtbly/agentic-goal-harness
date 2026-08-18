@@ -1,0 +1,9 @@
+{"ts":"2026-08-18T08:20:00Z","sid":"main","kind":"user_correction","key":"redirect","length":"medium"}
+{"ts":"2026-08-18T08:21:15Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T08:31:23Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T08:43:34Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T08:46:37Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T09:03:46Z","sid":"main","kind":"user_correction","key":"redirect","length":"medium"}
+{"ts":"2026-08-18T09:06:18Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T09:09:23Z","sid":"main","kind":"subagent_fail","key":""}
+{"ts":"2026-08-18T12:13:42Z","sid":"main","kind":"session_end","key":"prompt_input_exit","guardBlocks":0,"toolErrors":0,"userCorrections":2,"dirtyTree":true}

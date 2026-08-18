@@ -5,6 +5,22 @@ description: Deploy runbooks the finisher follows. Vercel for web, EAS and TestF
 
 # Ship
 
+## The skeleton deploy, first
+
+On a deployed done level the first deploy happens at the end of slice 1, not at
+SHIP. Slice 1 is the walking skeleton: routes exist, the app builds, it goes
+live. Everything after it is verified against a real URL.
+
+1. `scripts/preflight.sh`. Outstanding items mean no deploy is possible yet;
+   say so once, keep building locally, park the live-URL lines.
+2. Green pre-flight: `vercel link` if `.vercel/` is absent, then
+   `vercel deploy --prod`, and record the URL in RESUME.md and EVIDENCE.md.
+3. From here every slice redeploys, so each rubric line that names the live URL
+   can be measured the day its slice lands.
+
+Deploying only at the end is how run one produced nine slice-1 rubric lines
+that could not be measured on the day slice 1 was built, or on any day after.
+
 ## Vercel (web)
 1. vercel link, answer once, then vercel env pull for local parity.
 2. Set production env vars with `vercel env add NAME production`; never commit

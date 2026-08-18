@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart. Stdout lands in context: load state so no session starts cold.
+HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 [ -d .forge ] || exit 0
 echo "=== FORGE STATE (auto-loaded) ==="
@@ -10,6 +11,15 @@ if [ -f .forge/DOD.md ]; then
   grep '^- \[ \]' .forge/DOD.md | head -20
 fi
 [ -f .forge/RUNLOG.md ] && { echo "--- LAST RUNLOG ---"; tail -3 .forge/RUNLOG.md; }
+# A parked run stopped on purpose. Say so before anything reads the rubric and
+# concludes the run simply died.
+[ -f .forge/PARKED ] && { echo "--- PARKED ---"; cat .forge/PARKED; }
+# What the operator still owes. Run one found this at slice 1; it belongs on
+# every session start until it is empty.
+if [ -f .forge/PREFLIGHT.md ] && [ -x "$HERE/preflight.sh" ]; then
+  echo "--- PRE-FLIGHT ---"
+  "$HERE/preflight.sh" 2>/dev/null | tail -n +2
+fi
 # Arming reminder. ARMED marks approval, not arming: /goal is session-scoped
 # and dies with the session, so an armed run resumed fresh has no condition.
 if [ -f .forge/PLAN.md ]; then

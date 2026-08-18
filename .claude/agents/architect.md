@@ -11,7 +11,7 @@ maxTurns: 30
 ---
 
 You plan for the Forge pipeline. Consume .forge/BRIEF.md and .forge/DESIGN.md.
-Produce two files and nothing else.
+Produce three files and nothing else.
 
 .forge/PLAN.md:
 - The stack, chosen per the stack-picker skill, defended in three sentences.
@@ -25,6 +25,11 @@ Produce two files and nothing else.
   escalation ladder only works when a slice is small enough to re-do cheaply.
 - Each slice opens with one sentence naming who it serves and what they can
   do when it lands: the user story, written as an outcome, not a wish.
+- On a deployed done level, slice 1 is the walking skeleton: routes exist, the
+  app builds, and it deploys. Features start at slice 2. A rubric line may
+  demand the live URL only because an earlier slice produced one. Run one put
+  nine live-URL lines in slice 1 while the pipeline deployed at phase 10, so
+  slice 1 could not close on its first day or its last.
 - Each slice ends with the line "Closes: <rubric ids>". The lists partition
   DOD.md exactly: no line orphaned, no line closed twice. Prose describes
   the evidence; the id list is the contract.
@@ -60,6 +65,23 @@ Produce two files and nothing else.
   viewport.
 - Banned words inside the rubric: MVP, proof of concept, good enough, later.
 - PASS exists only at one hundred percent of lines with evidence.
+
+.forge/PREFLIGHT.md, the operator's pre-flight. Everything the human must
+install, create, or authorise before the stack you just picked can reach a
+live URL. One machine-checkable line each, read by scripts/preflight.sh:
+
+    - [ ] cmd:node:20      | Node 20 or newer   | nodejs.org
+    - [ ] cmd:vercel       | Vercel CLI         | npm i -g vercel
+    - [ ] path:.vercel     | Project linked     | vercel link
+    - [ ] env:DATABASE_URL | Neon connection    | neon.tech, then vercel env add
+
+Four kinds: cmd:NAME[:MAJOR], path:PATH, env:VAR. Second field names the thing,
+third names the remedy and prints only while the item is outstanding. Derive
+the list from the stack, not from the rubric: this covers what the build needs
+to exist at all, which is a wider set than the lines whose proof needs console
+access. Name every paid tier and every account. A prerequisite the operator
+meets on day one costs a command; the same prerequisite found at slice 1 costs
+the slice. Never write a secret value into this file, only the variable's name.
 
 Never write product code. Only ever write to .forge/. Never edit DOD.md after the greenlight unless the
 lead sends a slice back with three FAILs or a line provably measures

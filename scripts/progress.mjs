@@ -13,6 +13,7 @@ if (!existsSync('.forge')) process.exit(0)
 const read = f => { try { return readFileSync(f, 'utf8') } catch { return '' } }
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const trunc = (s, n) => s.length > n ? s.slice(0, n - 3) + '...' : s
+const safeDir = d => { try { return readdirSync(d) } catch { return [] } }
 
 const brief = read('.forge/BRIEF.md')
 const design = read('.forge/DESIGN.md')
@@ -67,24 +68,165 @@ const nVerified = allLines.filter(l => l.state === 'verified').length
 const nEvidence = allLines.filter(l => l.state === 'evidence').length
 
 // Slices from PLAN.md, cursor from RESUME.md, per-slice rubric ids from the
-// "Closes ..." clause the architect writes in each slice.
-let sliceTitles = [...plan.matchAll(/^#{0,3}\s*Slice (\d+)[:.]\s*([^\n]*)/gim)].map(m => ({ n: +m[1], title: m[2].trim() }))
-if (!sliceTitles.length) {
-  // Numbered headings under a "## Slices" section: "### 1. The aisle check".
-  const sec = (plan.split(/^##\s*Slices\b/im)[1] || '').split(/^##\s+[^#]/m)[0]
-  sliceTitles = [...sec.matchAll(/^#{2,4}\s*(\d+)[.)]\s*([^\n]+)/gm)].map(m => ({ n: +m[1], title: m[2].trim() }))
+// "Closes" clause the architect writes in each slice. Two heading dialects
+// ship: "## Slice 3: Title" anywhere in the plan, and "### 3. Title" under a
+// "## Slices" section. Titles and bodies come out of the same pass, so the
+// chips and the per-slice rubric ids can never disagree about which slice is
+// which.
+const sliceScope = (plan.split(/^##[ \t]*Slices\b[^\n]*$/im)[1] || '').split(/^##\s+/m)[0]
+const SLICE_DIALECTS = [
+  [plan, /^#{0,4}[ \t]*Slice[ \t]+(\d+)[ \t]*[:.)][ \t]*([^\n]*)$/gim],
+  [sliceScope, /^#{2,4}[ \t]*(\d+)[ \t]*[.)][ \t]*([^\n]+)$/gm],
+]
+let sliceTitles = []
+const sliceBodies = {}
+for (const [text, re] of SLICE_DIALECTS) {
+  const hits = [...text.matchAll(re)]
+  if (!hits.length) continue
+  sliceTitles = hits.map(m => ({ n: +m[1], title: m[2].trim() }))
+  hits.forEach((m, i) => {
+    const end = i + 1 < hits.length ? hits[i + 1].index : text.length
+    sliceBodies[+m[1]] = text.slice(m.index + m[0].length, end)
+  })
+  break
 }
+
+// The cursor. "Current slice: 3" is the written form; "Slice 3 of 10" is the
+// prose the lead writes in RESUME's header. A bare "slice 3" is never read as
+// the cursor: RESUME names other slices in prose on nearly every line.
 const curSlice = +((resume.match(/Current slice:[^\n]*?(\d+)/i)
+  || resume.match(/\bslice[ \t]+(\d+)[ \t]+of[ \t]+\d+/i)
   || resume.match(/Next action:[^\n]*?slice (\d+)/i) || [, 0])[1])
+
+// Per-slice rubric ids, read from the Closes clause alone and kept only when
+// the id exists in the rubric. Scanning a whole slice body would promote
+// prose like "avatar copy into R2" into a rubric line. Ranges written out,
+// "A1 through A4" or "A1-A4", expand.
 const sliceIds = {}
-const sliceBlocks = plan.split(/^#{0,3}\s*Slice /gim).slice(1)
-for (const b of sliceBlocks) {
-  const n = +(b.match(/^(\d+)/) || [, 0])[1]
-  const closes = b.match(/Closes[:\s]+([A-Z0-9 ,]+)/i)
-  if (n && closes) sliceIds[n] = closes[1].match(/[A-Z]+\d+/g) || []
+for (const [n, body] of Object.entries(sliceBodies)) {
+  const clause = (body.match(/^Closes\b[^\n]*(?:\n(?![ \t]*$)[^\n]*)*/im) || [''])[0]
+  const ids = []
+  const push = id => { if (byId[id] && !ids.includes(id)) ids.push(id) }
+  for (const r of clause.matchAll(/\b([A-Z]+)(\d+)[ \t]*(?:through|to|-|\u2013)[ \t]*\1?(\d+)\b/g)) {
+    for (let i = +r[2]; i <= +r[3] && i - +r[2] < 40; i++) push(r[1] + i)
+  }
+  for (const id of clause.match(/\b[A-Z]+\d+\b/g) || []) push(id)
+  if (ids.length) sliceIds[n] = ids
 }
-const resumeTop = resume.split('\n').filter(l => /^(Last phase|Current slice|Next action)/i.test(l))
+
+// RESUME's header strip: the explicit "Key: value" lines when the lead writes
+// them, else the same three facts recovered from the prose header and the
+// first step under "## Next action".
+let resumeTop = resume.split('\n').filter(l => /^(Last phase|Current slice|Next action)/i.test(l))
   .map(l => { const m = l.match(/^([^:]+):\s*(.*)$/); return m ? [m[1], m[2]] : ['', l] })
+if (!resumeTop.length) {
+  const flat = t => t.replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()
+  // The first prose paragraph under the title, not the whole header: what
+  // follows it is the goal condition, which the rubric panel already draws.
+  const head = flat((resume.split(/^##\s+/m)[0].split('\n').filter(l => !/^#/.test(l))
+    .join('\n').trim().split(/\n[ \t]*\n/)[0] || ''))
+  const next = flat((resume.split(/^##[ \t]*Next action[^\n]*$/im)[1] || '').split(/^##\s+/m)[0]
+    .trim().split(/\n[ \t]*\n/)[0] || '').replace(/^(?:[-*+]|\d+[.)])[ \t]*/, '')
+  if (head) resumeTop.push(['Last phase', head])
+  if (curSlice) resumeTop.push(['Current slice', `${curSlice} of ${sliceTitles.length || '?'}`])
+  if (next) resumeTop.push(['Next action', next])
+}
+
+// ---------------------------------------------------------------- screenmap
+// The product's screens, and how far each one has actually got. Four sources,
+// each doing only what it is entitled to do: DESIGN.md names the screens,
+// PLAN.md says which slice brings each, the capture files say which ones have
+// been seen, and the source tree says which routes exist. The tree is read for
+// inventory and for drift, never to guess which screen a route serves: a route
+// name is a label somebody typed, not a statement about what it renders.
+const screenScope = (design.split(/^##[ \t]*Screens?\b[^\n]*$/im)[1] || '').split(/^##\s+/m)[0]
+let screens = [...screenScope.matchAll(/^\|[ \t]*(\d{1,2})[ \t]*\|[ \t]*([^|\n]+?)[ \t]*\|/gm)]
+  .map(m => ({ n: +m[1], name: m[2].trim() }))
+if (!screens.length) {
+  screens = [...design.matchAll(/^#{2,4}[ \t]*(?:Screen[ \t]+)?(\d{1,2})[ \t]*[.:)]?[ \t]+([^\n|]+?)[ \t]*$/gim)]
+    .map(m => ({ n: +m[1], name: m[2].trim() }))
+}
+screens = screens.filter((s, i, a) => a.findIndex(x => x.n === s.n) === i).sort((a, b) => a.n - b.n)
+
+// Screen to slice. Numbers first, because "screens 02 and 03" is unambiguous.
+// A screen still unclaimed falls back to its name, and only in the shape "the
+// landing page" or "screen Landing": a bare word match reads slice 1's "the
+// stamp landing captured" as the landing screen, which it is not. The Closes
+// clause is excluded either way; it describes proof, not what gets built.
+const rx = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const screenSlice = {}
+for (const [n, body] of Object.entries(sliceBodies)) {
+  const built = body.split(/^Closes\b/im)[0]
+  for (const m of built.matchAll(/\bscreens?[ \t]+(\d{1,2}(?:[ \t]*(?:,|and|&|to|through)[ \t]*\d{1,2})*)/gi)) {
+    for (const d of m[1].match(/\d{1,2}/g) || []) if (screenSlice[+d] == null) screenSlice[+d] = +n
+  }
+  for (const sc of screens) {
+    if (screenSlice[sc.n] != null) continue
+    if (new RegExp(`\\b${rx(sc.name)}[ \t]+(?:page|screen|view)\\b|\\bscreens?[ \t]+${rx(sc.name)}\\b`, 'i').test(built)) screenSlice[sc.n] = +n
+  }
+}
+
+// Captures per screen: a filename token equal to the zero-padded number.
+// Exact-token matching keeps "390" and "1440" out of it.
+const captureNames = [...safeDir('.forge/evidence'), ...safeDir('.forge/shots')]
+  .map(f => f.replace(/\.[a-z0-9]+$/i, '').split('-'))
+const screenShots = n => captureNames.filter(t => t.includes(String(n).padStart(2, '0'))).length
+
+// Routes the run declares, from RESUME's screen table. Scoped to a table whose
+// header says "Screen" so other numbered tables cannot be read as this one.
+const declRoute = {}
+const rtTable = resume.split('\n')
+let inScreenTable = false
+for (const l of rtTable) {
+  if (/^\|/.test(l) && /screen/i.test(l) && /route/i.test(l)) { inScreenTable = true; continue }
+  if (inScreenTable && !/^\|/.test(l)) { inScreenTable = false; continue }
+  if (!inScreenTable) continue
+  const c = l.split('|').map(x => x.trim())
+  const n = +(c[1] || '').match(/^\d{1,2}$/)
+  if (!n) continue
+  const r = (c[3] || '').match(/`?(\/[^\s`]*)`?/)
+  if (r) declRoute[n] = r[1]
+}
+
+// Routes on disk. One detector per router convention; unknown stacks simply
+// yield nothing and the panel drops its route column rather than inventing it.
+const ROUTE_SKIP = new Set(['node_modules', '.git', '.next', '.forge', 'dist', 'build', 'out',
+  '.expo', '.svelte-kit', '.nuxt', 'coverage', '.turbo', 'ios', 'android', 'vendor', 'target'])
+const walkRoutes = (d, depth, acc) => {
+  if (depth > 8 || acc.length > 6000) return acc
+  let ents = []
+  try { ents = readdirSync(d, { withFileTypes: true }) } catch { return acc }
+  for (const e of ents) {
+    if (e.name.startsWith('.') || ROUTE_SKIP.has(e.name)) continue
+    const q = d === '.' ? e.name : `${d}/${e.name}`
+    if (e.isDirectory()) walkRoutes(q, depth + 1, acc); else acc.push(q)
+  }
+  return acc
+}
+const routesInTree = [...new Set(walkRoutes('.', 0, []).map(f => {
+  let m
+  if ((m = f.match(/(?:^|\/)app\/(.*?)\/?page\.[jt]sx?$/))) return '/' + m[1]
+  if ((m = f.match(/(?:^|\/)pages\/(.+)\.[jt]sx?$/))) return /^(_app|_document|api\/)/.test(m[1]) ? '' : '/' + m[1].replace(/\/?index$/, '')
+  if ((m = f.match(/(?:^|\/)routes\/(.*?)\/?\+page\.svelte$/))) return '/' + m[1]
+  if ((m = f.match(/(?:^|\/)src\/pages\/(.+)\.astro$/))) return '/' + m[1].replace(/\/?index$/, '')
+  return ''
+}).filter(Boolean).map(r => (r.replace(/\/\([^)]*\)/g, '').replace(/\[\.\.\.(\w+)\]/g, '*')
+  .replace(/\[(\w+)\]/g, ':$1').replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1') || '/')))].sort()
+
+const screenMap = screens.map(sc => {
+  const shots = screenShots(sc.n)
+  const slice = screenSlice[sc.n]
+  return {
+    ...sc, shots, slice,
+    route: declRoute[sc.n] || '',
+    gone: !!declRoute[sc.n] && routesInTree.length > 0 && !routesInTree.includes(declRoute[sc.n]),
+    state: shots ? 'cap' : (slice && slice === curSlice ? 'bld' : 'pln'),
+  }
+})
+const shotMax = Math.max(1, ...screenMap.map(s => s.shots))
+const screensSeen = screenMap.filter(s => s.state === 'cap').length
+const tied = new Set(screenMap.map(s => s.route).filter(Boolean))
+const untied = routesInTree.filter(r => !tied.has(r))
 
 // In play: the current slice's not-yet-verified lines, else newest evidenced.
 let inPlay = (sliceIds[curSlice] || []).map(id => byId[id]).filter(l => l && l.state !== 'verified')
@@ -529,8 +671,34 @@ transparent 7px 12px);animation:flow .7s linear infinite}
 .slices .sl-active .d{background:var(--accent)}
 main{display:grid;grid-template-columns:1.05fr 1.45fr .72fr;
 grid-template-rows:1.3fr .8fr;gap:.8rem;min-height:0}
-.panel.rub{grid-row:1/3}
-.panel.disp{grid-column:2/4}
+.panel.rub{grid-column:1;grid-row:1/3}
+.panel.act{grid-column:2;grid-row:1}
+.panel.cap{grid-column:3;grid-row:1}
+.panel.disp{grid-column:2/4;grid-row:2}
+/* The screenmap claims a fourth column, full height, only when the run has
+   screens to draw. Without it the board keeps its three-column shape. */
+main.smx{grid-template-columns:1fr 1.4fr .7fr .78fr}
+main.smx .panel.scr{grid-column:4;grid-row:1/3}
+.smap{display:flex;flex-direction:column;gap:.32rem;overflow:hidden;min-height:0;flex:1}
+.srow{display:flex;flex-direction:column;gap:.08rem}
+.sh{display:flex;align-items:center;gap:.4rem;min-width:0}
+.sdot{width:.5rem;height:.5rem;border-radius:50%;flex:none;
+border:1px solid var(--line);background:transparent}
+.s-cap .sdot{background:var(--accent);border-color:var(--accent)}
+.s-bld .sdot{border-color:var(--warn)}
+.sn{font:500 .62rem/1.4 var(--mono);color:var(--muted);flex:none}
+.snm{font-size:.72rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-pln .snm{opacity:.5}
+.sm{display:flex;align-items:center;gap:.4rem;padding-left:.9rem;min-width:0}
+.srt{font:400 .61rem/1.4 var(--mono);color:var(--muted);white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.srt.gone{color:var(--warn)}
+.ssl{font:400 .6rem/1.4 var(--mono);color:var(--muted);opacity:.75;flex:none}
+.sbar{width:2.4rem;height:3px;border-radius:2px;background:var(--line);flex:none;overflow:hidden}
+.sbar i{display:block;height:100%;background:var(--accent)}
+.snb{font:400 .61rem/1.4 var(--mono);color:var(--muted);width:2.5ch;text-align:right;flex:none}
+.sfoot{margin-top:.5rem;padding-top:.45rem;border-top:1px solid var(--line);
+font-size:.61rem;line-height:1.45;color:var(--muted)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;
 padding:.8rem .9rem;overflow:hidden;min-height:0;display:flex;flex-direction:column;
 box-shadow:0 2px 8px rgb(0 0 0 / .5)}
@@ -655,9 +823,11 @@ box-shadow:0 8px 32px rgb(0 0 0 / .7);display:flex;flex-direction:column;min-hei
 .lb figcaption{font:400 .68rem/1.5 var(--mono);color:var(--muted);padding:.4rem .7rem}
 @media (max-width:900px),(orientation:portrait){
 body{height:auto;overflow:auto;grid-template-rows:none}
-main{grid-template-columns:1fr;grid-template-rows:none}
-.panel.rub{grid-row:auto}
-.panel.disp{grid-column:auto}
+main,main.smx{grid-template-columns:1fr;grid-template-rows:none}
+main.smx .panel.scr{grid-column:auto;grid-row:auto}
+.panel.rub{grid-row:auto;grid-column:auto}
+.panel.act,.panel.cap{grid-column:auto;grid-row:auto}
+.panel.disp{grid-column:auto;grid-row:auto}
 .tree{column-count:1}
 h1{white-space:normal}
 .graph{flex-wrap:wrap;gap:.5rem}
@@ -705,7 +875,7 @@ h1{white-space:normal}
   </div>` : ''}
 </section>
 
-<main>
+<main class="${screenMap.length ? 'smx' : ''}">
   <div class="panel rub">
     <div class="phead"><span class="lbl">Rubric</span>${allLines.length ? `<button class="btn-all">all ${allLines.length} lines</button>` : ''}</div>
     ${allLines.length ? `<div class="rgrid">
@@ -723,7 +893,7 @@ h1{white-space:normal}
     : '<p class="empty">The rubric arrives with the plan. Nothing is measured before it exists.</p>'}
   </div>
 
-  <div class="panel">
+  <div class="panel act">
     <div class="lbl">Activity</div>
     ${resumeTop.length ? `<div class="kv">
     ${resumeTop.map(([k, v]) => `<span class="k">${esc(k.toLowerCase())}</span><span class="v">${esc(trunc(v, 170))}</span>`).join('\n    ')}
@@ -734,7 +904,7 @@ h1{white-space:normal}
     </div>` : '<p class="empty">No evidence recorded yet.</p>'}
   </div>
 
-  <div class="panel">
+  <div class="panel cap">
     <div class="lbl">Latest captures${gallery.length > showable.length ? ` · ${showable.length} of ${gallery.length}, all in the popin` : ''}</div>
     ${showable.length ? `<div class="shots">
     ${showable.map((s, i) => `<figure data-i="${i}"><img src="${esc(s.copy)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
@@ -751,6 +921,17 @@ h1{white-space:normal}
     ${seatChips}
     </div>` : '<p class="empty">Agent dispatches appear once the run starts delegating.</p>'}
   </div>
+${screenMap.length ? `
+  <div class="panel scr">
+    <div class="phead"><span class="lbl">Screens</span><span class="snb" style="width:auto">${screensSeen} of ${screenMap.length}</span></div>
+    <div class="smap">
+    ${screenMap.map(s => `<div class="srow s-${s.state}" title="${esc(s.name)}${s.slice ? ` · slice ${s.slice}` : ''}${s.route ? ` · ${esc(s.route)}` : ''} · ${s.shots} capture(s)">
+      <div class="sh"><span class="sdot"></span><span class="sn">${String(s.n).padStart(2, '0')}</span><span class="snm">${esc(s.name)}</span></div>
+      <div class="sm"><span class="srt${s.gone ? ' gone' : ''}">${esc(s.route || (s.slice ? 'not routed' : ''))}</span><span class="ssl">${s.slice ? `s${s.slice}` : ''}</span><span class="sbar"><i style="width:${(s.shots / shotMax * 100).toFixed(0)}%"></i></span><span class="snb">${s.shots || ''}</span></div>
+    </div>`).join('\n    ')}
+    </div>
+    <div class="sfoot">${routesInTree.length ? `${routesInTree.length} route(s) in the tree, ${tied.size} tied to a screen${untied.length ? ` · untied: ${esc(trunc(untied.join(' '), 46))}` : ''}` : 'No router convention recognised in this tree.'}</div>
+  </div>` : ''}
 </main>
 
 <footer>

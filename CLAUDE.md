@@ -7,7 +7,10 @@ gate: the greenlight.
 ## Rules that live here
 
 1. One human gate. The plan, the rubric, and the screens are approved once, at
-   the greenlight. After that, no questions, no permission prompts.
+   the greenlight. After that, no questions, no permission prompts. Everything
+   the human must install, create, or authorise is named once, at the
+   greenlight, in .forge/PREFLIGHT.md. A run never acquires a new human
+   dependency mid-build without recording it.
 2. Market ready is the bar. Deployed is the floor. A product that is live but
    ugly, confusing, or failing its own rubric is not done.
 3. The bar never moves. When quality misses, escalate the model or re-plan the
@@ -17,12 +20,20 @@ gate: the greenlight.
    the size: a goal shipping beyond the local machine is planned with one
    designer dispatch, kept or struck at the greenlight.
 5. State is sacred. Every phase writes to .forge/ in the target project. The
-   lead updates .forge/RESUME.md after every slice and every verdict.
+   lead updates .forge/RESUME.md after every slice and every verdict. Work
+   that is not committed does not exist: every green slice is a commit, and
+   the hooks checkpoint between them, so no session loses more than ten
+   minutes.
 6. Evidence, never assertions. Nothing is checked off without a command output,
    a screenshot, or a live URL recorded in .forge/EVIDENCE.md.
 7. The greenlight is never automated. No auto-approval, no scheduled /loop on
    a build goal, no unattended gate. A run that can approve its own plan has
    no gate.
+8. A blocked run parks. When nothing actionable remains, write what the run is
+   waiting on and rest. Parking is not a question, not a failure, and never a
+   softened line: the rubric stands, the gate stays armed, and the next
+   session opens on .forge/PARKED. A gate you cannot step away from is a
+   livelock, not a bar.
 
 ## Compact policy
 

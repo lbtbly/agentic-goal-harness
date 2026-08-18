@@ -84,8 +84,8 @@ tokens, and interaction notes. No MCP available: standalone HTML wireframes in
 
 Delegate to the architect agent. It consumes BRIEF and DESIGN, picks the stack
 and defends the choice in three sentences, breaks the work into vertical
-slices that each cross every layer, and writes .forge/PLAN.md plus
-.forge/DOD.md under the rubric rules in its instructions.
+slices that each cross every layer, and writes .forge/PLAN.md, .forge/DOD.md
+and .forge/PREFLIGHT.md under the rules in its instructions.
 
 ## 6. GREENLIGHT
 
@@ -101,8 +101,17 @@ and the /goal line to paste. The file states plainly: this is a
 summary for approving away from the desk, never a replacement. Approving means
 the full rubric applies.
 
-Present together, once: the plan, the full rubric, and the Claude Design share
-link. On S goals, no screens exist; GREENLIGHT.md names the craft lines as
+Run scripts/preflight.sh and put its output in GREENLIGHT.md verbatim, under
+the heading "Before this can reach a live URL". This is not optional and not a
+summary: it is the complete list of what the user must install, create, or
+authorise, with real state read from their machine rather than assumed. It does
+not block arming. They may approve with items outstanding, and the run then
+knows from its first turn that it is deploy-blocked instead of discovering it
+mid-build. Run one learned that the Vercel CLI was missing at slice 1, hours
+in, and nine rubric lines had been waiting on it the whole time.
+
+Present together, once: the plan, the full rubric, the pre-flight, and the
+Claude Design share link. On S goals, no screens exist; GREENLIGHT.md names the craft lines as
 the screen contract. The gate is a plan-mode moment, so it is mechanical,
 not behavioral: with every gate document already on disk, call EnterPlanMode
 and put the greenlight in the plan file. While you wait there you cannot
@@ -124,10 +133,24 @@ never create ARMED; the evaluator's push never outranks the gate.
 
 ## 8. BUILD
 
+On a deployed done level, BUILD opens with the skeleton deploy: slice 1 is the
+walking skeleton, and the moment it builds, deploy it per the ship skill so the
+live URL exists before any line needs it. When scripts/preflight.sh still
+reports items outstanding, say so once, build locally, and park the live-URL
+lines against the named missing prerequisite. Never re-ask; the pre-flight was
+presented at the greenlight and rehydrate.sh re-surfaces it every session.
+
 Delegate slices to the builder agent, one slice per dispatch, working from the
 Claude Design handoff bundle when available, canvas annotations included. M
-and L may parallelize builders in git worktrees. Each green slice becomes a
-commit. Record evidence with scripts/evidence.sh as you go.
+and L may parallelize builders in git worktrees.
+
+Each green slice becomes a commit, and you make it with
+`scripts/commit.sh --now "<message>"`, written in the project's voice. This is
+a step, not a sentiment: run one wrote this same instruction into the harness
+and then went seven and a half hours without a single commit, landing 314 paths
+in one lump at shutdown. The hooks now checkpoint underneath you on a throttle,
+so the floor is ten minutes, but a checkpoint is a safety net and a slice
+commit is history. Record evidence with scripts/evidence.sh as you go.
 
 ## 9. VERIFY
 

@@ -34,11 +34,13 @@ const prodName = ((plan.match(/^##\s*The name\b[\s\S]{0,160}?\*\*([^*\n]{2,40}?)
   || (reportHead.match(/^#\s*REPORT:\s*([^\n]{2,48})/m) || [])[1] || '').trim()
 const boardTitle = prodName || (goal ? trunc(goal.split(/,| to | so that | including /)[0], 48) : 'Forge run')
 
-// Evidence: ids that carry at least one recorded line.
+// Evidence: ids that carry at least one recorded line. The id field may
+// hold several ids and a qualifier ("F23/F24 (supporting, local)"); every
+// id in it counts as evidence recorded, and the verifier still rules.
 const evidenced = new Set()
 for (const line of evidence.split('\n')) {
-  const m = line.match(/^\S+ \| ([A-Za-z]*\d+[A-Za-z0-9]*) \|/)
-  if (m) evidenced.add(m[1])
+  const m = line.match(/^\S+ \| ([^|]+) \|/)
+  if (m) for (const id of m[1].match(/[A-Za-z]+\d+/g) || []) evidenced.add(id)
 }
 const evidenceLines = evidence.trim() ? evidence.trim().split('\n') : []
 
@@ -49,7 +51,7 @@ let cur = null
 for (const line of dod.split('\n')) {
   const h = line.match(/^##\s+(.+)/)
   if (h) { cur = { name: h[1].trim(), lines: [] }; sections.push(cur); continue }
-  const c = line.match(/^- \[([ x])\]\s+(?:[*_`]*([A-Za-z]+\d+)[*_`]*\s+)?(.*)/)
+  const c = line.match(/^- \[([ x])\]\s+(?:[*_`]*([A-Za-z]+\d+)[*_`]*[.):]?\s+)?(.*)/)
   if (c && cur) {
     const id = c[2] || ''
     const l = {
@@ -294,8 +296,8 @@ try {
 
 const dotCls = { verified: 'ok', evidence: 'wait', open: 'idle' }
 const evTail = evidenceLines.slice(-7).reverse().map(l => {
-  const m = l.match(/^(\S+) \| (\S+) \| (.*)$/)
-  return m ? { t: m[1].slice(11, 16), id: m[2], txt: m[3] } : { t: '', id: '', txt: l }
+  const m = l.match(/^(\S+) \| ([^|]+) \| (.*)$/)
+  return m ? { t: m[1].slice(11, 16), id: trunc(m[2].trim(), 16), txt: m[3] } : { t: '', id: '', txt: l }
 })
 // The real agent tree, from the session transcripts: every subagent leaves
 // agent-<id>.meta.json (type, description, spawnDepth, toolUseId) plus a

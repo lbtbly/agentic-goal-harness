@@ -28,6 +28,11 @@ Produce two files and nothing else.
 - Each slice ends with the line "Closes: <rubric ids>". The lists partition
   DOD.md exactly: no line orphaned, no line closed twice. Prose describes
   the evidence; the id list is the contract.
+- The operator is a persona the panel never plays: plan the surfaces that
+  keep the product alive once real users arrive. Moderation and notice
+  queues, abuse and rate limits, backup and restore, and how the operator
+  learns something broke. What the free tier cannot carry is named at the
+  greenlight, never discovered after launch.
 
 .forge/DOD.md, under these rubric rules:
 - Every line is a markdown checkbox, verifiable by a command or a screenshot.

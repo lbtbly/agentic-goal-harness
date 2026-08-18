@@ -26,6 +26,13 @@ const armed = existsSync('.forge/ARMED')
 const shipped = existsSync('.forge/REPORT.md')
 
 const goal = (brief.match(/^Goal:\s*(.+)$/m) || [, ''])[1]
+// The board's title is the product's name when the run has minted one,
+// else the goal clipped at its first natural seam. The full goal stays
+// readable as the heading's hover title.
+const reportHead = read('.forge/REPORT.md').slice(0, 400)
+const prodName = ((plan.match(/^##\s*The name\b[\s\S]{0,160}?\*\*([^*\n]{2,40}?)\.?\*\*/im) || [])[1]
+  || (reportHead.match(/^#\s*REPORT:\s*([^\n]{2,48})/m) || [])[1] || '').trim()
+const boardTitle = prodName || (goal ? trunc(goal.split(/,| to | so that | including /)[0], 48) : 'Forge run')
 
 // Evidence: ids that carry at least one recorded line.
 const evidenced = new Set()
@@ -438,7 +445,7 @@ const html = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <noscript><meta http-equiv="refresh" content="15"></noscript>
-<title>Forge run</title>
+<title>${esc(boardTitle)} · forge</title>
 <style>
 :root{--bg:#0B0B0B;--surface:#1C1C1C;--raised:#262626;--ink:#FAFAFA;
 --muted:#8C8C8C;--line:#333333;--accent:#3FBF52;--accent-ink:#052A0C;
@@ -660,7 +667,7 @@ h1{white-space:normal}
 <body>
 <header>
   <div class="id">
-    <h1>${esc(goal || 'Forge run')}</h1>
+    <h1 title="${esc(goal)}">${esc(boardTitle)}</h1>
     <div class="chips">
     ${concluded && verdict ? `<span class="chip ${/^PASS/i.test(verdict) ? 'chip--ok' : 'chip--bad'}"><span class="d"></span>concluded · ${esc(trunc(verdict, 30))}</span>`
       : shipped && verifiedAll ? '<span class="chip chip--ok"><span class="d"></span>shipped</span>'

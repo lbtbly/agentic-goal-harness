@@ -335,6 +335,48 @@ else
 fi
 rm -rf "$T2"
 
+# 4d. The two states between open and evidence. A board that reads 0/0/N through
+# hours of building looks identical to a run that never started, which is how an
+# EVIDENCE.md that did not exist stayed invisible for a whole slice.
+T8=$(mktemp -d); mkdir -p "$T8/.forge"; touch "$T8/.forge/ARMED"
+printf '# DOD\n\n## Function\n- [ ] F1. a\n- [ ] F2. b\n- [ ] F3. c\n- [ ] F4. d\n' > "$T8/.forge/DOD.md"
+printf '# Plan\n\n## Slices\n\n### Slice 1. First\n\nCloses: F1, F2\n\n### Slice 2. Second\n\nCloses: F3, F4\n' > "$T8/.forge/PLAN.md"
+
+# Cursor on slice 1: its two lines are in build, the rest stay open, no debt.
+printf '# Resume\n\nCurrent slice: 1\n' > "$T8/.forge/RESUME.md"
+( cd "$T8" && node "$S/progress.mjs" ) 2>/dev/null
+H8="$T8/.forge/PROGRESS.html"
+{ grep -q '2 in build' "$H8" && grep -q '2 open' "$H8" && ! grep -q 'class="debt"' "$H8"; } \
+  && ok "rubric counts the current slice as in build" \
+  || fail "in-build count wrong at slice 1"
+
+# Cursor moves on with nothing recorded: slice 1's lines become debt, and the
+# debt is named by the slice that owed it.
+printf '# Resume\n\nCurrent slice: 2\n' > "$T8/.forge/RESUME.md"
+( cd "$T8" && node "$S/progress.mjs" ) 2>/dev/null
+{ grep -q 'class="debt"' "$H8" && grep -q '2 line(s) built in slice 1, 0 recorded' "$H8" \
+  && grep -q '2 unrecorded' "$H8"; } \
+  && ok "rubric surfaces lines built in a past slice and never recorded" \
+  || fail "debt not surfaced after the cursor moved"
+
+# Record slice 1 and the debt clears rather than lingering.
+printf '2026-01-01T00:00:00Z | F1 | proof\n2026-01-01T00:00:00Z | F2 | proof\n' > "$T8/.forge/EVIDENCE.md"
+( cd "$T8" && node "$S/progress.mjs" ) 2>/dev/null
+{ ! grep -q 'class="debt"' "$H8" && grep -q '2 evidence' "$H8"; } \
+  && ok "recording the evidence clears the debt" \
+  || fail "debt survived the evidence that answers it"
+
+# Every line lands in exactly one bucket: the four must sum to the rubric.
+SUM=$(node -e '
+const h=require("fs").readFileSync(process.argv[1],"utf8");
+const m=h.match(/([0-9]+) verified · ([0-9]+) evidence(?: · ([0-9]+) in build)? · ([0-9]+) open/);
+const u=(h.match(/>([0-9]+) unrecorded</)||[,0])[1];
+console.log(m ? (+m[1])+(+m[2])+(+(m[3]||0))+(+m[4])+(+u) : -1);
+' "$H8")
+[ "$SUM" -eq 4 ] && ok "the rubric states partition every line" \
+  || fail "states do not partition the rubric (sum=$SUM of 4)"
+rm -rf "$T8"
+
 # 5. The four workflows parse under the runtime grammar (async body, export stripped).
 if command -v node >/dev/null 2>&1; then
   node -e '

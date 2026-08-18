@@ -117,6 +117,37 @@ for (const [n, body] of Object.entries(sliceBodies)) {
 // RESUME's header strip: the explicit "Key: value" lines when the lead writes
 // them, else the same three facts recovered from the prose header and the
 // first step under "## Next action".
+// Two states between open and evidence. The rubric could say nothing about a
+// line the builder was working on right now, so a board sat at 0 verified, 0
+// evidence, 122 open through hours of real work and looked identical to a run
+// that had not started.
+//
+//   building   the current slice's own lines, in flight
+//   unrecorded lines from slices ALREADY PAST the cursor that still carry no
+//              evidence: built, and never written down
+//
+// The second is the one worth having. It reads 0 while a run records as it
+// goes and climbs the moment it stops, which is exactly the failure that hid
+// in run two: nine lines built and an EVIDENCE.md that never existed.
+const sliceOf = {}
+for (const [n, ids] of Object.entries(sliceIds)) {
+  for (const id of ids) if (sliceOf[id] == null) sliceOf[id] = +n
+}
+for (const l of allLines) {
+  if (l.state !== 'open' || !l.id) continue
+  const n = sliceOf[l.id]
+  if (n == null || !curSlice) continue
+  if (n === curSlice) l.state = 'building'
+  else if (n < curSlice) l.state = 'unrecorded'
+}
+const nBuilding = allLines.filter(l => l.state === 'building').length
+const unrecorded = allLines.filter(l => l.state === 'unrecorded')
+const nOpen = allLines.filter(l => l.state === 'open').length
+// Grouped by the slice that owed them, newest debt first: "which slice walked
+// away without writing anything down" is the actionable form of the number.
+const debtBySlice = {}
+for (const l of unrecorded) (debtBySlice[sliceOf[l.id]] ||= []).push(l)
+
 let resumeTop = resume.split('\n').filter(l => /^(Last phase|Current slice|Next action)/i.test(l))
   .map(l => { const m = l.match(/^([^:]+):\s*(.*)$/); return m ? [m[1], m[2]] : ['', l] })
 if (!resumeTop.length) {
@@ -450,7 +481,7 @@ try {
   if (total > 0) tokensTxt = total >= 1e6 ? `${(total / 1e6).toFixed(1)}M` : `${Math.round(total / 1e3)}k`
 } catch {}
 
-const dotCls = { verified: 'ok', evidence: 'wait', open: 'idle' }
+const dotCls = { verified: 'ok', evidence: 'wait', building: 'bld', unrecorded: 'bad', open: 'idle' }
 const evTail = evidenceLines.slice(-7).reverse().map(l => {
   const m = l.match(/^(\S+) \| ([^|]+) \| (.*)$/)
   return m ? { t: m[1].slice(11, 16), id: trunc(m[2].trim(), 16), txt: m[3] } : { t: '', id: '', txt: l }
@@ -637,6 +668,16 @@ background:var(--raised);color:var(--muted);border:1px solid var(--line)}
 border-radius:99px;overflow:hidden;display:flex}
 .pct .meter{margin-top:.4rem;width:10.5rem}
 .m-v{background:var(--accent)}.m-e{background:var(--warn)}
+/* In build reads as scope, not progress: an outline rather than a fill, so it
+   can never be mistaken for a line that is part-way to PASS. Unrecorded is the
+   only thing on this board allowed to look like a problem. */
+.m-b{background:repeating-linear-gradient(90deg,var(--line) 0 3px,transparent 3px 6px)}
+.m-u{background:var(--negative)}
+.chip--warn{color:var(--negative);border-color:color-mix(in srgb,var(--negative) 45%,var(--line))}
+.debt{margin-top:.6rem;padding:.45rem .55rem;border-radius:6px;
+border:1px solid color-mix(in srgb,var(--negative) 40%,var(--line));
+font:500 .68rem/1.5 var(--mono);color:var(--negative)}
+.debtwhy{font:400 .64rem/1.45 var(--sans);color:var(--muted);margin-top:.2rem}
 .graph{display:flex;align-items:stretch;padding:.5rem 0 .2rem}
 .pnode{flex:3;min-width:0;background:var(--surface);border:1px solid var(--line);
 border-radius:10px;padding:.75rem .85rem .65rem;box-shadow:0 2px 8px rgb(0 0 0 / .5)}
@@ -717,7 +758,7 @@ font-size:.61rem;line-height:1.45;color:var(--muted)}
 padding:.8rem .9rem;overflow:hidden;min-height:0;display:flex;flex-direction:column;
 box-shadow:0 2px 8px rgb(0 0 0 / .5)}
 .panel .lbl{margin-bottom:.55rem}
-.rgrid{display:grid;grid-template-columns:max-content 1fr 2.6ch 2.6ch 2.9ch;
+.rgrid{display:grid;grid-template-columns:max-content 1fr 2.6ch 2.6ch 2.6ch 2.9ch;
 gap:.3rem .55rem;align-items:center;font-size:.72rem}
 .rgrid .h{font:500 .6rem/1.2 var(--mono);color:var(--muted);text-align:right}
 .rgrid .nm{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:9em}
@@ -728,6 +769,8 @@ text-align:right;color:var(--muted)}
 .dotln.ok{background:var(--accent)}
 .dotln.wait{background:transparent;border:1px solid var(--warn)}
 .dotln.idle{background:transparent;border:1px solid var(--line)}
+.dotln.bld{background:transparent;border:1px dashed var(--muted)}
+.dotln.bad{background:var(--negative)}
 .play{margin-top:.7rem;padding-top:.55rem;border-top:1px solid var(--line);
 overflow:hidden;min-height:0;flex:1}
 .play .row{display:flex;gap:.5rem;padding:.22rem 0;align-items:flex-start}
@@ -860,7 +903,7 @@ h1{white-space:normal}
       : armed ? '<span class="chip chip--ok"><span class="d"></span>gate active</span>'
       : '<span class="chip">pre-greenlight</span>'}
     ${!concluded && shipped && !verifiedAll ? '<span class="chip">report written · verify pending</span>' : ''}
-    ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open</span>` : ''}
+    ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''} · ${nOpen} open</span>${unrecorded.length ? `<span class="chip chip--warn" title="Built in an earlier slice and never recorded in EVIDENCE.md">${unrecorded.length} unrecorded</span>` : ''}` : ''}
     ${stackLine ? `<span class="chip">${esc(trunc(stackLine, 58))}</span>` : ''}
     </div>
   </div>
@@ -868,7 +911,7 @@ h1{white-space:normal}
     <div class="n">${pct}%</div>
     <div class="cap">complete, estimated</div>
     ${durationTxt || tokensTxt ? `<div class="cap">${[durationTxt ? `running ${durationTxt}` : '', tokensTxt ? `${tokensTxt} tokens` : ''].filter(Boolean).join(' · ')}</div>` : ''}
-    ${allLines.length ? `<div class="meter"><span class="m-v" style="width:${(nVerified / allLines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(nEvidence / allLines.length * 100).toFixed(1)}%"></span></div>` : ''}
+    ${allLines.length ? `<div class="meter"><span class="m-v" style="width:${(nVerified / allLines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(nEvidence / allLines.length * 100).toFixed(1)}%"></span><span class="m-u" style="width:${(unrecorded.length / allLines.length * 100).toFixed(1)}%"></span><span class="m-b" style="width:${(nBuilding / allLines.length * 100).toFixed(1)}%"></span></div>` : ''}
   </div>
 </header>
 
@@ -893,13 +936,20 @@ h1{white-space:normal}
   <div class="panel rub">
     <div class="phead"><span class="lbl">Rubric</span>${allLines.length ? `<button class="btn-all">all ${allLines.length} lines</button>` : ''}</div>
     ${allLines.length ? `<div class="rgrid">
-    <span></span><span></span><span class="h" title="verified by the verifier">ok</span><span class="h" title="evidence recorded, awaiting the verifier">ev</span><span class="h">all</span>
+    <span></span><span></span><span class="h" title="verified by the verifier">ok</span><span class="h" title="evidence recorded, awaiting the verifier">ev</span><span class="h" title="in the slice being built now">wip</span><span class="h">all</span>
     ${sections.filter(s => s.lines.length).map(s => {
       const v = s.lines.filter(l => l.state === 'verified').length
       const e = s.lines.filter(l => l.state === 'evidence').length
-      return `<span class="nm">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${(v / s.lines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(e / s.lines.length * 100).toFixed(1)}%"></span></div><span class="n${v ? ' on' : ''}">${v}</span><span class="n${e ? ' on' : ''}">${e}</span><span class="n">${s.lines.length}</span>`
+      const b = s.lines.filter(l => l.state === 'building').length
+      const u = s.lines.filter(l => l.state === 'unrecorded').length
+      const pc = k => (k / s.lines.length * 100).toFixed(1)
+      return `<span class="nm">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${pc(v)}%"></span><span class="m-e" style="width:${pc(e)}%"></span><span class="m-u" style="width:${pc(u)}%"></span><span class="m-b" style="width:${pc(b)}%"></span></div><span class="n${v ? ' on' : ''}">${v}</span><span class="n${e ? ' on' : ''}">${e}</span><span class="n${b ? ' on' : ''}">${b}</span><span class="n">${s.lines.length}</span>`
     }).join('\n    ')}
     </div>
+    ${unrecorded.length ? `<div class="debt">${Object.entries(debtBySlice).sort((a, b) => b[0] - a[0])
+      .map(([n, ls]) => `<div>${ls.length} line(s) built in slice ${n}, 0 recorded</div>`).join('')}
+    <div class="debtwhy">Nothing reaches the verifier until it is in EVIDENCE.md.</div>
+    </div>` : ''}
     ${inPlay.length ? `<div class="play">
     <div class="lbl">${esc(inPlayLabel)}</div>
     ${inPlay.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(trunc(l.text, 150))}</span></div>`).join('\n    ')}
@@ -955,7 +1005,7 @@ ${screenMap.length ? `
 
 ${allLines.length ? `<div class="rb">
   <div class="box">
-    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence · ${allLines.length - nVerified - nEvidence} open of ${allLines.length}</span><span class="lg"><span class="dotln ok"></span>verified<span class="dotln wait"></span>evidence, awaiting the verifier<span class="dotln idle"></span>open</span></div>
+    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''}${unrecorded.length ? ` · ${unrecorded.length} unrecorded` : ''} · ${nOpen} open of ${allLines.length}</span><span class="lg"><span class="dotln ok"></span>verified<span class="dotln wait"></span>evidence<span class="dotln bld"></span>in build${unrecorded.length ? '<span class="dotln bad"></span>built, never recorded' : ''}<span class="dotln idle"></span>open</span></div>
     <div class="bb">
     ${sections.filter(s => s.lines.length).map(s => `<div class="sec">${esc(s.name)}</div>
     ${s.lines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}`).join('\n    ')}

@@ -30,7 +30,12 @@ if [ -n "$ACTIVE" ]; then
   # The reminder already landed this turn and the run still wants to stop.
   # Record the park so the next session opens on it, and commit so nothing
   # rests only on disk.
-  DONE=$(grep -c '^- \[x\]' .forge/DOD.md 2>/dev/null || echo 0)
+  # grep -c prints 0 AND exits 1 when nothing matches, so `|| echo 0` appends a
+  # second line and the arithmetic below dies on "0\n0 + LEFT". Every run before
+  # its first verdict has zero checked lines, which is precisely when the park is
+  # most likely to be written. `|| true` keeps the count and drops the status.
+  DONE=$(grep -c '^- \[x\]' .forge/DOD.md 2>/dev/null || true)
+  DONE=${DONE:-0}
   {
     printf 'parked %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '%s of %s rubric line(s) checked, %s unchecked\n' \

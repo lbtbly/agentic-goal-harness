@@ -77,6 +77,23 @@ RC=$?
 { [ $RC -eq 0 ] && [ -f "$T2/.forge/PARKED" ] && grep -q '1 of 3' "$T2/.forge/PARKED"; } \
   && ok "dod-gate yields on stop_hook_active and records the park" \
   || fail "dod-gate livelocks on stop_hook_active (rc=$RC)"
+# 3b-ii. The park with NOTHING checked yet, which is every run before its first
+# verdict and so the likeliest park of all. The fixture above carries one checked
+# line, which is why this went unseen: grep -c prints 0 and exits 1 when nothing
+# matches, so a `|| echo 0` fallback appended a second line and the arithmetic
+# died on "0\n0 + LEFT". A population that never includes the failing case is not
+# a test, which is the same rule this run's rubric now puts on every sweep.
+printf -- '- [ ] one\n- [ ] two\n- [ ] three\n' > "$T2/.forge/DOD.md"
+rm -f "$T2/.forge/PARKED"
+ERR=$(echo '{"stop_hook_active":true}' | CLAUDE_PROJECT_DIR="$T2" "$S/dod-gate.sh" 2>&1 >/dev/null)
+RC=$?
+{ [ $RC -eq 0 ] && [ -f "$T2/.forge/PARKED" ] && grep -q '0 of 3' "$T2/.forge/PARKED" \
+  && ! printf '%s' "$ERR" | grep -qi 'syntax error'; } \
+  && ok "dod-gate parks cleanly with zero checked" \
+  || fail "dod-gate park broke at zero checked (rc=$RC): $ERR"
+printf -- '- [x] one\n- [ ] two\n- [ ] three\n' > "$T2/.forge/DOD.md"
+rm -f "$T2/.forge/PARKED"
+
 echo '{"stop_hook_active":false}' | CLAUDE_PROJECT_DIR="$T2" "$S/dod-gate.sh" >/dev/null 2>&1
 [ $? -eq 2 ] && ok "dod-gate still blocks when the flag is false" || fail "dod-gate stopped blocking"
 SEC0=$(date +%s)

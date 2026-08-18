@@ -1,10 +1,29 @@
 #!/usr/bin/env bash
 # PostToolUse on edits. Fast feedback only; exit 2 shows stderr to Claude.
+#
+# A manifest exists before its dependencies do, and a half-installed tree names
+# scripts whose binaries are not there yet. That window produces "command not
+# found", which is a setup state and not a defect, and blocking on it stalls the
+# very install that would clear it. So: a check that RAN and found problems
+# blocks. A check that could not run says so and stands down. The bar does not
+# move, it just waits for its tools.
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 [ -f package.json ] || exit 0
 PM=npm; [ -f pnpm-lock.yaml ] && PM=pnpm
 has() { python3 -c "import json;print('$1' in json.load(open('package.json')).get('scripts',{}))" 2>/dev/null | grep -q True; }
-OUT=""
-if has typecheck; then OUT=$($PM run -s typecheck 2>&1) || { echo "typecheck failed:" >&2; echo "$OUT" | tail -20 >&2; exit 2; }; fi
-if has lint; then OUT=$($PM run -s lint 2>&1) || { echo "lint failed:" >&2; echo "$OUT" | tail -20 >&2; exit 2; }; fi
+
+run() {
+  has "$1" || return 0
+  OUT=$($PM run -s "$1" 2>&1) && return 0
+  if printf '%s' "$OUT" | grep -qE 'command not found|not recognized|Cannot find module|ERR_MODULE_NOT_FOUND'; then
+    echo "checks: $1 could not run, its tooling is not installed yet" >&2
+    return 0
+  fi
+  echo "$1 failed:" >&2
+  printf '%s\n' "$OUT" | tail -20 >&2
+  return 2
+}
+
+run typecheck || exit 2
+run lint || exit 2
 exit 0

@@ -25,6 +25,9 @@ Produce two files and nothing else.
   escalation ladder only works when a slice is small enough to re-do cheaply.
 - Each slice opens with one sentence naming who it serves and what they can
   do when it lands: the user story, written as an outcome, not a wish.
+- Each slice ends with the line "Closes: <rubric ids>". The lists partition
+  DOD.md exactly: no line orphaned, no line closed twice. Prose describes
+  the evidence; the id list is the contract.
 
 .forge/DOD.md, under these rubric rules:
 - Every line is a markdown checkbox, verifiable by a command or a screenshot.

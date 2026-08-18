@@ -36,7 +36,9 @@ proceed on assumed answers. Do not ask anything else, now or later.
 
 ## 2. SIZE
 
-Delegate to the router agent. It returns S, M, or L plus one reason. Record it.
+Delegate to the router agent. It returns S, M, or L plus one reason. Record
+"Size: <letter>" with the reason in RESUME.md, and keep that line through
+every later rewrite.
 - S: single feature or page, one evening of work. Skip phase 3. Phase 4 is
   proposed designer-only when the done level leaves the machine; the
   greenlight decides.

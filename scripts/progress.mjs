@@ -15,6 +15,7 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const trunc = (s, n) => s.length > n ? s.slice(0, n - 3) + '...' : s
 
 const brief = read('.forge/BRIEF.md')
+const design = read('.forge/DESIGN.md')
 const dod = read('.forge/DOD.md')
 const plan = read('.forge/PLAN.md')
 const resume = read('.forge/RESUME.md')
@@ -58,8 +59,14 @@ const nEvidence = allLines.filter(l => l.state === 'evidence').length
 
 // Slices from PLAN.md, cursor from RESUME.md, per-slice rubric ids from the
 // "Closes ..." clause the architect writes in each slice.
-const sliceTitles = [...plan.matchAll(/^#{0,3}\s*Slice (\d+)[:.]\s*([^\n]*)/gim)].map(m => ({ n: +m[1], title: m[2].trim() }))
-const curSlice = +((resume.match(/Current slice:[^\n]*?(\d+)/i) || [, 0])[1])
+let sliceTitles = [...plan.matchAll(/^#{0,3}\s*Slice (\d+)[:.]\s*([^\n]*)/gim)].map(m => ({ n: +m[1], title: m[2].trim() }))
+if (!sliceTitles.length) {
+  // Numbered headings under a "## Slices" section: "### 1. The aisle check".
+  const sec = (plan.split(/^##\s*Slices\b/im)[1] || '').split(/^##\s+[^#]/m)[0]
+  sliceTitles = [...sec.matchAll(/^#{2,4}\s*(\d+)[.)]\s*([^\n]+)/gm)].map(m => ({ n: +m[1], title: m[2].trim() }))
+}
+const curSlice = +((resume.match(/Current slice:[^\n]*?(\d+)/i)
+  || resume.match(/Next action:[^\n]*?slice (\d+)/i) || [, 0])[1])
 const sliceIds = {}
 const sliceBlocks = plan.split(/^#{0,3}\s*Slice /gim).slice(1)
 for (const b of sliceBlocks) {
@@ -124,6 +131,36 @@ const pct = allLines.length
   ? (verifiedAll && shipped ? 100
     : Math.min(99, Math.round(20 + 80 * (nVerified + 0.5 * nEvidence) / allLines.length)))
   : Math.min(20, Math.round(((Math.min(active, 5) + (armed ? 1 : 0)) / 6) * 20))
+
+// Per-phase facts for the pipeline nodes: the real datum where one exists,
+// the phase's generic detail otherwise.
+const doneLevel = (brief.match(/##\s*Done level\s*\n+\s*([^\n#]+)/i) || [, ''])[1]
+const sizeLetter = ((resume + '\n' + plan + '\n' + greenlight)
+  .match(/\b(?:SIZE|[Ss]ize[d]?|[Rr]outer returned)\s*:?\s*\**\s*([SML])\b/) || [, ''])[1]
+  || (design ? 'M or L' : '')
+let researchN = 0
+try { researchN = readdirSync('.forge/research').filter(f => /\.(md|txt)$/i.test(f)).length } catch {}
+const directionName = (design.match(/##\s*Direction\s*\n+\**([^*\n.]+)/i) || [, ''])[1]
+const screenN = (design.match(/^\|\s*0?\d+\s*\|/gm) || []).length
+const armedAt = armed ? (() => { try { return statSync('.forge/ARMED').mtimeMs } catch { return 0 } })() : 0
+const phaseFact = i => {
+  const st = phaseState(i)
+  if (st === 'skipped') return 'skipped'
+  if (st === 'pending') return PHASES[i][2]
+  switch (i) {
+    case 0: return doneLevel ? trunc(doneLevel.trim().toLowerCase(), 26) : PHASES[i][2]
+    case 1: return sizeLetter ? `sized ${sizeLetter}` : PHASES[i][2]
+    case 2: return researchN ? `${researchN} brief(s) in` : PHASES[i][2]
+    case 3: return directionName ? trunc(directionName.trim(), 20) + (screenN ? ` · ${screenN} screens` : '') : PHASES[i][2]
+    case 4: return allLines.length ? `${sliceTitles.length || '?'} slices · ${allLines.length} lines` : PHASES[i][2]
+    case 5: return armed ? `armed ${hhmmSafe(armedAt)}` : (allLines.length ? 'awaiting approval' : PHASES[i][2])
+    case 6: return curSlice ? `slice ${curSlice} of ${sliceTitles.length || '?'}` : PHASES[i][2]
+    case 7: return allLines.length ? `${nVerified} of ${allLines.length} verified` : PHASES[i][2]
+    case 8: return shipped ? 'report written' : PHASES[i][2]
+  }
+  return PHASES[i][2]
+}
+const hhmmSafe = t => t ? new Date(t).toTimeString().slice(0, 5) : ''
 
 // Latest captures.
 const shots = []
@@ -435,24 +472,30 @@ background:var(--raised);color:var(--muted);border:1px solid var(--line)}
 border-radius:99px;overflow:hidden;display:flex}
 .pct .meter{margin-top:.4rem;width:10.5rem}
 .m-v{background:var(--accent)}.m-e{background:var(--warn)}
-.graph{display:flex;align-items:stretch;padding:.45rem 0 .15rem}
+.graph{display:flex;align-items:stretch;padding:.5rem 0 .2rem}
 .pnode{flex:3;min-width:0;background:var(--surface);border:1px solid var(--line);
-border-radius:10px;padding:.6rem .75rem .55rem;box-shadow:0 2px 8px rgb(0 0 0 / .5)}
-.pnode .ph{display:flex;align-items:center;gap:.5rem;min-width:0}
-.pdot{width:.6rem;height:.6rem;border-radius:50%;background:var(--raised);
-border:1px solid var(--line);flex:none}
-.pt{font-size:1.1rem;font-weight:500;letter-spacing:-.01em;color:var(--muted);
+border-radius:10px;padding:.75rem .85rem .65rem;box-shadow:0 2px 8px rgb(0 0 0 / .5)}
+.pnode .ph{display:flex;align-items:center;gap:.55rem;min-width:0}
+.pmark{width:1.05rem;height:1.05rem;border-radius:50%;background:var(--raised);
+border:1px solid var(--line);flex:none;display:flex;align-items:center;
+justify-content:center;font:700 .62rem/1 var(--sans);color:var(--bg)}
+.pt{font-size:1.18rem;font-weight:500;letter-spacing:-.01em;color:var(--muted);
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ps{font:400 .62rem/1.4 var(--mono);color:var(--muted);margin:.2rem 0 0 1.1rem;
+.pf{font:500 .66rem/1.4 var(--mono);color:var(--muted);margin:.3rem 0 0 1.6rem;
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pnode.done .pt{color:var(--ink)}
-.pnode.done .pdot{background:var(--muted);border-color:var(--muted)}
+.pnode.done .pf{color:var(--ink);opacity:.75}
+.pnode.done .pmark{background:var(--muted);border-color:var(--muted)}
 .pnode.active{border-color:var(--accent);
 box-shadow:0 0 0 1px var(--accent),0 2px 8px rgb(0 0 0 / .5)}
 .pnode.active .pt{color:var(--ink)}
-.pnode.active .pdot{background:var(--accent);border-color:var(--accent)}
-.pnode.pending{opacity:.6}
-.pnode.skipped{opacity:.45}.pnode.skipped .pt{text-decoration:line-through}
+.pnode.active .pf{color:var(--ink)}
+.pnode.active .pmark{background:var(--accent);border-color:var(--accent)}
+.pnode.pending{opacity:.55}
+.pnode.skipped{opacity:.5;background-image:repeating-linear-gradient(45deg,
+transparent 0 7px,rgb(255 255 255 / .05) 7px 8px)}
+.pnode.skipped .pt{text-decoration:line-through}
+.pnode.skipped .pmark{color:var(--muted)}
 .wire{flex:1;min-width:.7rem;align-self:center;height:2px;background:var(--line);
 position:relative;margin:0 -1px;z-index:0}
 .wire::after{content:"";position:absolute;right:0;top:-3px;
@@ -461,7 +504,13 @@ border-bottom:4px solid transparent}
 .wire.w-done{background:var(--muted)}.wire.w-done::after{border-left-color:var(--muted)}
 .wire.w-live{background:var(--accent)}.wire.w-live::after{border-left-color:var(--accent)}
 @media (prefers-reduced-motion:no-preference){
-.pnode.active .pdot{animation:pulse 1.6s ease-in-out infinite}
+.pnode.active{animation:ring 1.6s ease-in-out infinite}
+.pnode.active .pmark{animation:pulse 1.6s ease-in-out infinite}
+.wire.w-live{background:repeating-linear-gradient(90deg,var(--accent) 0 7px,
+transparent 7px 12px);animation:flow .7s linear infinite}
+@keyframes ring{50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent),
+0 2px 8px rgb(0 0 0 / .5)}}
+@keyframes flow{to{background-position:-12px 0}}
 @keyframes pulse{50%{opacity:.35}}}
 .slices{display:flex;gap:.6rem;justify-content:center;margin-top:.6rem;overflow:hidden}
 .slices .chip{font-size:.75rem;padding:5px 11px}
@@ -633,9 +682,10 @@ h1{white-space:normal}
 <section>
   <div class="lbl">Pipeline</div>
   <div class="graph">
-  ${PHASES.map(([name, , sub], i) => {
+  ${PHASES.map(([name], i) => {
     const st = phaseState(i)
-    const node = `<div class="pnode ${st}"><div class="ph"><span class="pdot"></span><span class="pt">${esc(name)}</span></div><div class="ps">${st === 'skipped' ? 'skipped' : esc(sub)}</div></div>`
+    const glyph = st === 'done' ? '&check;' : st === 'skipped' ? '&times;' : ''
+    const node = `<div class="pnode ${st}"><div class="ph"><span class="pmark">${glyph}</span><span class="pt">${esc(name)}</span></div><div class="pf">${esc(phaseFact(i))}</div></div>`
     const wire = i < PHASES.length - 1
       ? `<div class="wire ${i + 1 < active ? 'w-done' : i + 1 === active ? 'w-live' : ''}"></div>` : ''
     return node + wire

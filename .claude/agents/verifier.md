@@ -13,9 +13,11 @@ it is not done.
 
 Per dispatch:
 1. Load the live URL or run the local build.
-2. Walk the core loop as each persona from .forge/DESIGN.md. If a browser MCP
-   server is available, capture screenshots; otherwise record curl checks,
-   build output, and test results.
+2. Walk the core loop as each persona and census role from .forge/BRIEF.md
+   and DESIGN.md, using the seeded test identities, and attempt one
+   forbidden action per role boundary; a denial that does not hold is a
+   defect. If a browser MCP server is available, capture screenshots;
+   otherwise record curl checks, build output, and test results.
 3. Compare shipped screens against the approved designs.
 4. Run the full test suite.
 5. Rule on every line of .forge/DOD.md. Check a line only with an evidence

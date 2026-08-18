@@ -5,14 +5,49 @@ description: Persona interviews, design spec format, and the Claude Design runbo
 
 # Design
 
+## Role census (before any persona is cast)
+
+Products carry a role spectrum, and a panel that interviews only consumers
+plans only for consumers. First, write the census into BRIEF.md under
+"## Roles": one row per role with mandate, access rights, and key surfaces.
+
+    | Role | Mandate | Access | Key surfaces |
+
+Sources: the goal, the scout research (category norms reveal the roles: a
+marketplace has buyers, sellers, and support; a B2B2C product has a
+professional side and a consumer side, different people with different
+churn), and the compliance triggers (personal data implies someone
+administers it). Always present: every end-user kind, and the operator.
+Present when real: admin tiers with distinct rights, back-office roles named
+by mandate, a support specialist and a content reviewer being different
+roles when their access differs. On S goals the census is two lines, user
+and operator, unless the brief says otherwise.
+
 ## Persona panel (run by the lead, consumed by the designer)
 
-Build three personas from the research: name, context, motivation, the one
-thing that would make them churn. For each, an interviewer pass probes:
+Personas are drawn from the census, three to five: one per end-user kind,
+one back-office persona when the census carries back-office roles, and the
+operator. Each: name, context, motivation, the one thing that would make
+them churn or quit. More roles than five interviews: merge the closest
+kinds and say so in the synthesis. The interviewer pass probes by kind:
+
+End user:
 1. Would you use this? What would you use instead?
 2. What is missing before you would pay or return?
 3. What in comparable products annoys you most?
-Synthesis: three findings, three table stakes, one risk. One page.
+
+Back-office:
+1. What fills your queue, and what makes one case slow?
+2. What data must you see to do the job, and what must you never see?
+3. Where does the current tool make you do the system's work by hand?
+
+Operator:
+1. What breaks first when real users arrive, and how do you find out?
+2. What do you do weekly that should be a surface, not a ritual?
+3. What can this platform tier not carry, and when do you hit that wall?
+
+Synthesis: three findings, three table stakes, one risk, and the access
+boundaries the interviews surfaced (who must never see what). One page.
 
 ## Claude Design runbook
 

@@ -28,11 +28,16 @@ Produce two files and nothing else.
 - Each slice ends with the line "Closes: <rubric ids>". The lists partition
   DOD.md exactly: no line orphaned, no line closed twice. Prose describes
   the evidence; the id list is the contract.
-- The operator is a persona the panel never plays: plan the surfaces that
-  keep the product alive once real users arrive. Moderation and notice
-  queues, abuse and rate limits, backup and restore, and how the operator
-  learns something broke. What the free tier cannot carry is named at the
-  greenlight, never discovered after launch.
+- Plan for every role in the census, not only the end users. Back-office
+  and operator surfaces are surfaces: moderation and notice queues, abuse
+  and rate limits, backup and restore, and how the operator learns something
+  broke. What the free tier cannot carry is named at the greenlight, never
+  discovered after launch.
+- When census roles differ in rights, PLAN.md carries a role-by-capability
+  matrix and seeds one test identity per role, so the verifier walks every
+  role without operator credentials. DOD.md tests the denied cells that
+  guard personal data or money: a role reading what it must never see is a
+  FAIL, captured.
 
 .forge/DOD.md, under these rubric rules:
 - Every line is a markdown checkbox, verifiable by a command or a screenshot.

@@ -61,10 +61,13 @@ with the brief and taste references for the key screen and tokens. Plain
 approval keeps it; "approve, skip design" strikes it. A runs-locally S
 skips this phase entirely. Everything below is M and L.
 
-You, the lead, run the persona panel: build three personas from the research,
-then fan out one interviewer pass per persona (use the persona-panel workflow
-if available, otherwise three sequential Task calls) probing willingness to
-use, objections, and missing table stakes. Synthesize findings.
+You, the lead, first write the role census into BRIEF.md under Roles: every
+end-user kind, back-office roles by mandate, admin tiers, the operator, each
+with its access rights (the design skill holds the format). Then run the
+persona panel: three to five personas drawn from the census, one interviewer
+pass per persona (use the persona-panel workflow if available, otherwise
+sequential Task calls), probing by kind per the design skill. Synthesize
+findings, access boundaries included.
 
 Then, when the direction is not obvious, run the design-tournament workflow:
 generate several directions, filter them against the standards rubric, and let

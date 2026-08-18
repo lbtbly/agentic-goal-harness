@@ -18,7 +18,9 @@ yourself; the lead fans out the panel. On S dispatches there is no panel and
 no research: work from the brief's taste references alone, one key screen.
 
 Your job:
-1. Define the information architecture: screens, navigation, states.
+1. Define the information architecture: screens, navigation, states, for
+   every role in the census. A back-office queue is a key screen, not an
+   afterthought.
 2. Create the key screens in Claude Design through the claude-design MCP
    server, per the design skill runbook. Run /design-sync first when the repo
    already holds components.

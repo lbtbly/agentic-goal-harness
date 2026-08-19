@@ -836,9 +836,17 @@ justify-content:center;font:700 .62rem/1 var(--sans);color:var(--bg)}
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pf{font:500 .66rem/1.4 var(--mono);color:var(--muted);margin:.3rem 0 0 1.6rem;
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Completion is a FILLED state; in progress is an OUTLINED one. Done used to
+   be painted in --muted while the active node held the only green, so a
+   finished step read as dimmed and the step still running looked more complete
+   than the ones behind it. The wash stays low so the board keeps its one
+   rationed green: intensity is still reserved for what is live. */
+.pnode.done{background:color-mix(in srgb,var(--accent) 10%,var(--surface));
+border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
 .pnode.done .pt{color:var(--ink)}
-.pnode.done .pf{color:var(--ink);opacity:.75}
-.pnode.done .pmark{background:var(--muted);border-color:var(--muted)}
+.pnode.done .pf{color:var(--ink);opacity:.8}
+.pnode.done .pmark{background:var(--accent);border-color:var(--accent);
+color:var(--accent-ink)}
 .pnode.active{border-color:var(--accent);
 box-shadow:0 0 0 1px var(--accent),0 2px 8px rgb(0 0 0 / .5)}
 .pnode.active .pt{color:var(--ink)}
@@ -854,7 +862,8 @@ position:relative;margin:0 -1px;z-index:0}
 .wire::after{content:"";position:absolute;right:0;top:-3px;
 border-left:6px solid var(--line);border-top:4px solid transparent;
 border-bottom:4px solid transparent}
-.wire.w-done{background:var(--muted)}.wire.w-done::after{border-left-color:var(--muted)}
+.wire.w-done{background:color-mix(in srgb,var(--accent) 50%,var(--line))}
+.wire.w-done::after{border-left-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
 .wire.w-live{background:var(--accent)}.wire.w-live::after{border-left-color:var(--accent)}
 @media (prefers-reduced-motion:no-preference){
 .pnode.active{animation:ring 1.6s ease-in-out infinite}
@@ -876,10 +885,16 @@ min-width:0;color:var(--muted)}
 .slices .chip i{font:400 .62rem/1.4 var(--mono);font-style:normal;
 color:var(--muted);opacity:.7;flex:none}
 .slices .chip>:not(b):not(i){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.slices .sl-done{color:var(--ink)}
+/* The fill used to sit on the ACTIVE chip and nothing on the done ones, which
+   inverted the reading: the slice still being worked looked settled and the
+   three finished behind it looked pending. */
+.slices .sl-done{color:var(--ink);
+background:color-mix(in srgb,var(--accent) 13%,var(--surface));
+border-color:color-mix(in srgb,var(--accent) 32%,var(--line))}
 .slices .sl-done b{color:var(--accent)}
-.slices .sl-active{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
-background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.slices .sl-done i{color:var(--accent);opacity:.9}
+.slices .sl-active{color:var(--ink);background:var(--surface);
+border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .slices .sl-active b{color:var(--accent)}
 .slices .sl-active i{color:var(--ink);opacity:1}
 main{display:grid;grid-template-columns:1.05fr 1.45fr .72fr;
@@ -898,6 +913,8 @@ main.smx .panel.scr{grid-column:4;grid-row:1/3}
 .sdot{width:.5rem;height:.5rem;border-radius:50%;flex:none;
 border:1px solid var(--line);background:transparent}
 .s-cap .sdot{background:var(--accent);border-color:var(--accent)}
+.srow.s-cap{background:color-mix(in srgb,var(--accent) 9%,transparent);
+border-radius:5px;margin:0 -.3rem;padding:.1rem .3rem}
 .s-bld .sdot{border-color:var(--warn)}
 .sn{font:500 .62rem/1.4 var(--mono);color:var(--muted);flex:none}
 .snm{font-size:.72rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -924,6 +941,7 @@ gap:.3rem .55rem;align-items:center;font-size:.72rem}
 .rgrid .n{font:400 .68rem/1.2 var(--mono);font-variant-numeric:tabular-nums;
 text-align:right;color:var(--muted)}
 .rgrid .n.on{color:var(--ink)}
+.rgrid .nm.full{color:var(--accent)}
 .dotln{width:.5rem;height:.5rem;border-radius:50%;flex:none;margin-top:.28rem}
 .dotln.ok{background:var(--accent)}
 .dotln.wait{background:transparent;border:1px solid var(--warn)}
@@ -1110,7 +1128,10 @@ h1{white-space:normal}
       const b = s.lines.filter(l => l.state === 'building').length
       const u = s.lines.filter(l => l.state === 'unrecorded').length
       const pc = k => (k / s.lines.length * 100).toFixed(1)
-      return `<span class="nm">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${pc(v)}%"></span><span class="m-e" style="width:${pc(e)}%"></span><span class="m-u" style="width:${pc(u)}%"></span><span class="m-b" style="width:${pc(b)}%"></span></div><span class="n${v ? ' on' : ''}">${v}</span><span class="n${e ? ' on' : ''}">${e}</span><span class="n${b ? ' on' : ''}">${b}</span><span class="n">${s.lines.length}</span>`
+      // A section whose every line is verified is finished, and should say so
+      // in the same green the rest of the board now uses for completion.
+      const full = v === s.lines.length
+      return `<span class="nm${full ? ' full' : ''}">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${pc(v)}%"></span><span class="m-e" style="width:${pc(e)}%"></span><span class="m-u" style="width:${pc(u)}%"></span><span class="m-b" style="width:${pc(b)}%"></span></div><span class="n${v ? ' on' : ''}">${v}</span><span class="n${e ? ' on' : ''}">${e}</span><span class="n${b ? ' on' : ''}">${b}</span><span class="n">${s.lines.length}</span>`
     }).join('\n    ')}
     </div>
     ${unrecorded.length ? `<div class="debt">${Object.entries(debtBySlice).sort((a, b) => b[0] - a[0])

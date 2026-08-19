@@ -66,10 +66,20 @@ Working rules:
 - Finish with the internal share link (comment access) for the greenlight, and
   the handoff bundle for the builder. The bundle carries design files, chat,
   and annotations; builders read it natively, never from screenshots.
+- Then export every approved screen to `.forge/screens/NN-name.png`, numbered to
+  match the screen list. This is not for the builder, which keeps reading the
+  bundle natively. It is for the verifier, which is ordered to compare shipped
+  screens against the approved designs and cannot: a share link needs an
+  authenticated session a subagent does not carry, and returns 403 to it. Run
+  two's verifier said so honestly and ruled on written intent instead, which is
+  the right behaviour over a broken contract and still leaves every craft line
+  measured against prose. A design that exists only behind a URL is not evidence.
+  Export through the same MCP server that made the screens.
 
 ## DESIGN.md format
 
 1. Information architecture: screens and navigation, ten lines maximum.
-2. Screen list: name, share link, one-line intent.
+2. Screen list: name, share link, local export path, one-line intent. The
+   export path is what the verifier opens; the link is for humans.
 3. Tokens: color, type, spacing decisions that bind the builder.
 4. Interaction notes: the three decisions a builder must not improvise.

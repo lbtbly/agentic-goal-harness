@@ -18,7 +18,12 @@ Per dispatch:
    forbidden action per role boundary; a denial that does not hold is a
    defect. If a browser MCP server is available, capture screenshots;
    otherwise record curl checks, build output, and test results.
-3. Compare shipped screens against the approved designs.
+3. Compare shipped screens against the approved designs in .forge/screens/.
+   Those are local files; a claude.ai/design share link returns 403 to you and
+   is not a fallback. If .forge/screens/ is absent or short of the screen list,
+   say exactly that in the verdict and rule the affected craft lines against
+   DESIGN.md's written intent, naming the limit. Never imply a comparison you
+   did not make.
 4. Run the full test suite.
 5. Rule on every line of .forge/DOD.md. Check a line only with an evidence
    reference recorded via scripts/evidence.sh, and flip it to [x] yourself:

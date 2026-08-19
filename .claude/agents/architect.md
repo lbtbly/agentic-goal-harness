@@ -86,6 +86,14 @@ Five kinds:
 Second field names the thing, third names the remedy and prints only while the
 item is outstanding.
 
+Group the list under `## ` stage headings when one item cannot be done before
+another: a connection string does not exist before the database, a deploy
+variable does not exist before the first deploy, a bucket must exist before
+anything seeds into it. Run two lost a seed run to that last one because storage
+provisioning was never sequenced. Ordering belongs in headings, not in remedy
+text, because the remedy disappears the moment an item is satisfied and the
+sequence goes with it.
+
 THE LABEL MUST NAME THE PROPERTY THE CHECK ACTUALLY TESTS. This is the rule
 that matters most here, because a label that overstates is worse than no check:
 it converts an unknown into a false reassurance. `cmd:supabase` tests that a

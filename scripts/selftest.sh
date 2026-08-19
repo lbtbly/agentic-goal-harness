@@ -296,7 +296,7 @@ printf '%s' "$OUT" | grep -q 'set on this machine' \
   || fail "preflight still reports a bare 'set'"
 
 # A check that cannot run must never answer the question it was asked.
-printf '%s' "$OUT" | grep -qE 'cannot check|not linked|does not hold' \
+printf '%s' "$OUT" | grep -qE 'cannot read|cannot check|not linked|does not hold' \
   && ok "remote-env reports it could not check rather than passing" \
   || fail "remote-env passed without checking the deploy target"
 
@@ -307,6 +307,21 @@ printf '%s' "$OUT" | grep -q 'not probed' \
 OUT=$(CLAUDE_PROJECT_DIR="$T10" "$S/preflight.sh" --probe 2>/dev/null)
 printf '%s' "$OUT" | grep -q '\[x\] Works' \
   && ok "run: executes under --probe" || fail "run: did not execute under --probe"
+
+# Ordering lives in headings, not in remedy text: the remedy prints only while
+# an item is outstanding, so the sequence vanishes the moment it is satisfied.
+# Run two lost a seed run because storage provisioning was never sequenced.
+{
+  echo '## 1. Accounts'
+  echo '- [ ] cmd:sh          | A shell     | none'
+  echo '## 2. After the accounts'
+  echo '- [ ] cmd:nosuchcmd77 | Missing     | install it'
+} > "$T10/.forge/PREFLIGHT.md"
+OUT=$(CLAUDE_PROJECT_DIR="$T10" "$S/preflight.sh" 2>/dev/null)
+{ printf '%s' "$OUT" | grep -q '1. Accounts' && printf '%s' "$OUT" | grep -q '2. After the accounts' \
+  && printf '%s' "$OUT" | grep -q '1 of 2 outstanding'; } \
+  && ok "preflight renders stage headings without miscounting" \
+  || fail "stage headings broke the report"
 rm -rf "$T10"
 
 # 4. rehydrate labels both arming states.

@@ -84,16 +84,40 @@ satisfied() {
         DETAIL="set in $E, local only"; return 0
       done
       DETAIL="not set"; return 1 ;;
-    remote-env)
+    remote-env|denv)
       # What the DEPLOY TARGET holds, which is the thing the heading claims to
       # be about. Reports "cannot check" rather than passing when the CLI is
       # absent or unauthenticated, because a check that cannot run must never
       # answer the question it was asked.
-      command -v vercel >/dev/null 2>&1 || { DETAIL="vercel CLI absent, cannot check"; return 1; }
-      RES=$(vercel env ls production 2>&1) || { DETAIL="not linked or not logged in"; return 1; }
-      printf '%s' "$RES" | grep -qE "(^|[[:space:]])$REST([[:space:]]|$)" \
-        && { DETAIL="present in the deploy target"; return 0; }
+      #
+      # Two spellings on purpose. The harness wrote `remote-env` and run two
+      # independently wrote `denv` for the same idea on the same evening; both
+      # are accepted so neither copy's PREFLIGHT.md breaks when the scripts are
+      # synced. Caching and the fail-soft posture are run two's, and better than
+      # what this file had: this runs at every session start through
+      # rehydrate.sh, so it must never hang and never lie when offline.
+      if [ -z "${DENV_CACHE:-}" ]; then
+        command -v vercel >/dev/null 2>&1 \
+          && DENV_CACHE=$(vercel env ls production 2>/dev/null | awk '/^ [A-Z]/{print $1}' | tr '\n' ' ')
+        [ -z "${DENV_CACHE:-}" ] && DENV_CACHE="__unreadable__"
+      fi
+      case "$DENV_CACHE" in
+        __unreadable__) DETAIL="cannot read the deploy target"; return 1 ;;
+      esac
+      case " $DENV_CACHE " in
+        *" $REST "*) DETAIL="present in the deploy target"; return 0 ;;
+      esac
       DETAIL="the deploy target does not hold it"; return 1 ;;
+    url)
+      # Does the product actually answer, rather than does a value exist. Run
+      # two's addition, kept verbatim in behaviour: unreachable is outstanding,
+      # and any non-2xx reports the code it got rather than a bare failure.
+      CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$REST" 2>/dev/null)
+      case "$CODE" in
+        200|201|204) DETAIL="answers $CODE"; return 0 ;;
+        000|'') DETAIL="unreachable from here"; return 1 ;;
+        *) DETAIL="answers $CODE"; return 1 ;;
+      esac ;;
     run)
       # The only kind that tests a PROPERTY rather than a presence: does the
       # thing actually work. `cmd:supabase` passes on the binary existing, which
@@ -122,6 +146,11 @@ echo
 # prerequisite too late.
 while IFS= read -r LINE || [ -n "$LINE" ]; do
   case "$LINE" in
+    # PREFLIGHT.md already carries its ordering in prose: run two put "then",
+    # "after", "once" or "before" in 8 of 18 remedy fields. But the remedy
+    # prints only while an item is outstanding, so the sequence disappears
+    # exactly when the operator would re-read it. A heading survives.
+    "## "*) PENDING_STAGE=${LINE#\#\# }; continue ;;
     "- ["*"] "*"|"*) ;;
     *) continue ;;
   esac
@@ -131,6 +160,10 @@ while IFS= read -r LINE || [ -n "$LINE" ]; do
   [ -z "$SPEC" ] && continue
   [ ${#LABEL} -gt 26 ] && LABEL="${LABEL:0:25}."
   TOTAL=$((TOTAL + 1))
+  if [ -n "${PENDING_STAGE:-}" ]; then
+    printf '\n  %s\n' "$PENDING_STAGE"
+    PENDING_STAGE=""
+  fi
   DETAIL=""
   satisfied "$SPEC" && VERDICT=0 || VERDICT=1
   # One line, bounded. A check whose detail spans lines corrupts the report.

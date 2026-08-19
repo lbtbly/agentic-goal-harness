@@ -22,7 +22,10 @@ Your job:
    every role in the census. A back-office queue is a key screen, not an
    afterthought.
 2. Create the key screens in Claude Design through the claude-design MCP
-   server, per the design skill runbook. Run /design-sync first when the repo
+   server, per the design skill runbook. Export each approved screen to
+   .forge/screens/NN-name.png before you finish; the verifier compares against
+   those files and cannot open a share link.
+   Run /design-sync first when the repo
    already holds components.
 3. Write .forge/DESIGN.md: architecture, screen list with share links, tokens,
    interaction notes, and the three decisions a builder must not improvise.

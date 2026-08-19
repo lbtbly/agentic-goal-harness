@@ -36,6 +36,17 @@ const RULES = [
     re: /^\s*(?:\d+\.\s*)?(?:Run|run) `(?:npm|pnpm|npx|git|vercel|eas|node)\b/m },
   { need: ['WebSearch', 'WebFetch'], why: 'researches the open web',
     re: /\b(?:search the web|web search|WebSearch)\b/i },
+  // The designer was ordered to "Run /design-sync first" by three separate
+  // files while holding neither the tool nor any way to answer the condition
+  // attached to it. A subagent has no slash-command surface, so the order had
+  // no executable referent at all, and mcpServers: claude-design does not
+  // reach it: DesignSync is a top-level tool, not an mcp__claude-design__* one.
+  { need: ['DesignSync'], why: 'runs /design-sync',
+    re: /\/design-sync/ },
+  // An order conditioned on the repo's contents needs a way to look. The
+  // router carries Read, Grep, Glob for exactly this reason.
+  { need: ['Grep', 'Glob'], why: 'decides from what the repo already holds',
+    re: /when the repo (?:already )?holds/i },
 ]
 
 let bad = 0

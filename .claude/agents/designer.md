@@ -1,7 +1,7 @@
 ---
 name: designer
 description: Turns persona findings into screens and a design spec for M and L forge goals, using Claude Design.
-tools: Read, Write, WebSearch, WebFetch
+tools: Read, Write, WebSearch, WebFetch, Grep, Glob, DesignSync
 mcpServers:
   - claude-design
 model: inherit

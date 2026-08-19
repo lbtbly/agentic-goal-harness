@@ -169,7 +169,10 @@ until a full pass returns no new defects, never a fixed number of passes.
 
 Escalation ladder, apply without asking:
 - Two FAILs on the same slice: re-dispatch the builder with model raised one
-  tier (sonnet to opus, opus to the session model).
+  tier (sonnet to opus, opus to the session model). The seat pins
+  `model: sonnet`, so raising it means passing `model` on the dispatch itself,
+  which takes precedence over the frontmatter. Naming the rung without naming
+  the mechanism is how a ladder becomes a sentence.
 - Three FAILs on the same slice: send the slice back to the architect for a
   re-plan. The bar never moves; the resources do.
 

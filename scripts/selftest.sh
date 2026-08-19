@@ -471,6 +471,18 @@ if command -v node >/dev/null 2>&1; then
     && ok "each slice chip shows verified of total" \
     || fail "slice chips lost their counts"
 
+  # The details popin groups by slice as well as by section, and the slice view
+  # must account for every line: the Closes lists are supposed to partition the
+  # rubric exactly, so a line in neither view is a plan defect worth seeing.
+  SLICEROWS=$(sed -n '/class="bb bb-slice"/,/class="bb bb-sec"/p' "$H" | grep -c 'class="row"')
+  SECROWS=$(sed -n '/class="bb bb-sec"/,$p' "$H" | grep -c 'class="row"')
+  TOTALLINES=$(grep -c '^- \[' "$T4/.forge/DOD.md")
+  { [ "$SLICEROWS" -eq "$TOTALLINES" ] && [ "$SECROWS" -eq "$TOTALLINES" ]; } \
+    && ok "the popin groups every rubric line by slice and by section" \
+    || fail "popin lost lines (slice=$SLICEROWS sec=$SECROWS of $TOTALLINES)"
+  { grep -q 'data-g="slice"' "$H" && grep -q 'data-g="sec"' "$H"; } \
+    && ok "the popin offers both groupings" || fail "grouping toggle missing"
+
   # The environments strip, and its running indicator. The board said what had
   # been built and never where to look at it. A dot that cannot go out is
   # decoration, so this asserts BOTH states against a real listener.

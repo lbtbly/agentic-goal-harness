@@ -157,6 +157,21 @@ if (ordered.length && ordered.some(n => sliceProgress[n].done === sliceProgress[
   curSlice = firstOpen || ordered[ordered.length - 1]
 }
 
+// The rubric grouped by the slice that closes it, for the popin. The sections
+// answer "how is craft doing"; the slices answer "what is left in the thing
+// being built right now", which is the question during a build. Both are kept.
+const linesBySlice = sliceTitles
+  .map(st => ({
+    n: st.n,
+    title: st.title,
+    lines: (sliceIds[st.n] || []).map(id => byId[id]).filter(Boolean),
+  }))
+  .filter(g => g.lines.length)
+const claimedIds = new Set(linesBySlice.flatMap(g => g.lines.map(l => l.id)))
+// A line no Closes list names is not an error, but it is worth seeing: the
+// lists are supposed to partition the rubric exactly.
+const unclaimedLines = allLines.filter(l => !l.id || !claimedIds.has(l.id))
+
 // Two states between open and evidence. The rubric could say nothing about a
 // line the builder was working on right now, so a board sat at 0 verified, 0
 // evidence, 122 open through hours of real work and looked identical to a run
@@ -1035,7 +1050,19 @@ display:flex;align-items:center;gap:.4rem;flex:none}
 .rb .bh .lg .dotln{margin-top:0}
 .rb .bh .lg .dotln:not(:first-child){margin-left:.7rem}
 .rb .bb{overflow-y:auto;padding:.4rem 1rem 1rem}
-.rb .sec{font:500 .64rem/1.3 var(--mono);letter-spacing:.04em;color:var(--muted);
+.rb .grp{display:flex;gap:.25rem;flex:none}
+.rb .grp button{font:500 .62rem/1.2 var(--sans);padding:3px 9px;border-radius:7px;
+border:1px solid var(--line);background:var(--raised);color:var(--muted);cursor:pointer}
+.rb .grp button:hover{color:var(--ink)}
+.rb .grp button.on{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));
+background:color-mix(in srgb,var(--accent) 12%,var(--raised))}
+.rb .bb-sec{display:none}
+.rb.by-sec .bb-slice{display:none}
+.rb.by-sec .bb-sec{display:block}
+.rb .sec b{font:400 .62rem/1.3 var(--mono);color:var(--muted);font-weight:400}
+.rb .sec b.full{color:var(--accent)}
+.rb .sec{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;
+font:500 .64rem/1.3 var(--mono);letter-spacing:.04em;color:var(--muted);
 margin:.9rem 0 .3rem}
 .rb .row{display:flex;gap:.6rem;padding:.34rem 0;border-bottom:1px solid var(--line);
 align-items:flex-start}
@@ -1193,9 +1220,18 @@ ${screenMap.length ? `
 
 ${allLines.length ? `<div class="rb">
   <div class="box">
-    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''}${unrecorded.length ? ` · ${unrecorded.length} unrecorded` : ''} · ${nOpen} open of ${allLines.length}</span><span class="lg"><span class="dotln ok"></span>verified<span class="dotln wait"></span>evidence<span class="dotln bld"></span>in build${unrecorded.length ? '<span class="dotln bad"></span>built, never recorded' : ''}<span class="dotln idle"></span>open</span></div>
-    <div class="bb">
-    ${sections.filter(s => s.lines.length).map(s => `<div class="sec">${esc(s.name)}</div>
+    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''}${unrecorded.length ? ` · ${unrecorded.length} unrecorded` : ''} · ${nOpen} open of ${allLines.length}</span><span class="lg"><span class="dotln ok"></span>verified<span class="dotln wait"></span>evidence<span class="dotln bld"></span>in build${unrecorded.length ? '<span class="dotln bad"></span>built, never recorded' : ''}<span class="dotln idle"></span>open</span>${linesBySlice.length ? `<span class="grp"><button data-g="slice" class="on">by slice</button><button data-g="sec">by section</button></span>` : ''}</div>
+    ${linesBySlice.length ? `<div class="bb bb-slice">
+    ${linesBySlice.map(g => {
+      const pr = sliceProgress[g.n]
+      return `<div class="sec"><span>slice ${g.n} · ${esc(g.title)}</span>${pr ? `<b class="${pr.done === pr.all ? 'full' : ''}">${pr.done}/${pr.all}</b>` : ''}</div>
+    ${g.lines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}`
+    }).join('\n    ')}
+    ${unclaimedLines.length ? `<div class="sec"><span>closed by no slice</span><b>${unclaimedLines.length}</b></div>
+    ${unclaimedLines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}` : ''}
+    </div>` : ''}
+    <div class="bb bb-sec">
+    ${sections.filter(s => s.lines.length).map(s => `<div class="sec"><span>${esc(s.name)}</span></div>
     ${s.lines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}`).join('\n    ')}
     </div>
   </div>
@@ -1223,6 +1259,10 @@ setInterval(function(){if(!document.querySelector('.lb.open,.rb.open'))location.
 document.addEventListener('click',function(e){
   if(rb&&e.target.closest('.btn-all')){rb.classList.add('open');return}
   if(rb&&rb.classList.contains('open')){
+    var g=e.target.closest('.rb .grp button')
+    if(g){rb.classList.toggle('by-sec',g.dataset.g==='sec')
+      rb.querySelectorAll('.grp button').forEach(function(b){b.classList.toggle('on',b===g)})
+      return}
     if(!e.target.closest('.rb .box'))rb.classList.remove('open')
     return}
   var f=e.target.closest('.shots figure')

@@ -4,7 +4,7 @@ description: Researches market, comparable products, and platform requirements f
 tools: WebSearch, WebFetch, Read
 model: sonnet
 effort: medium
-maxTurns: 15
+maxTurns: 40
 ---
 
 You research for the Forge pipeline. Given a goal, return one page, no more:

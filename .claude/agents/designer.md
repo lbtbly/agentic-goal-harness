@@ -9,7 +9,7 @@ skills:
   - design
   - standards
   - workflows
-maxTurns: 40
+maxTurns: 80
 ---
 
 You design for the Forge pipeline. You receive the goal, the research, and the

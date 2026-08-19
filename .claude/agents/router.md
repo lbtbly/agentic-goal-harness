@@ -3,7 +3,7 @@ name: router
 description: Sizes a forge goal as S, M, or L. Use at the start of every /forge run, before any research or planning.
 tools: Read, Grep, Glob
 model: haiku
-maxTurns: 5
+maxTurns: 10
 ---
 
 You size goals for the Forge pipeline. Read .forge/BRIEF.md and the current

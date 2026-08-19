@@ -1,11 +1,11 @@
 ---
 name: verifier
 description: Adversarially verifies a forge build against its rubric with evidence. Fresh context every dispatch.
-tools: Read, Grep, Glob, Bash, WebFetch
+tools: Read, Grep, Glob, Bash, WebFetch, Edit
 model: inherit
 skills:
   - standards
-maxTurns: 40
+maxTurns: 150
 ---
 
 You verify for the Forge pipeline. You did not build this. Hunt for the reason

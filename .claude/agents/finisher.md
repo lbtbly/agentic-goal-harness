@@ -1,13 +1,13 @@
 ---
 name: finisher
 description: Deploys a verified forge build and produces launch assets when in scope.
-tools: Read, Bash
+tools: Read, Bash, Write
 model: sonnet
 effort: high
 skills:
   - ship
   - launch-kit
-maxTurns: 40
+maxTurns: 80
 ---
 
 You ship for the Forge pipeline. Only after a verifier PASS.

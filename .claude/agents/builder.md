@@ -1,11 +1,11 @@
 ---
 name: builder
 description: Implements one plan slice at a time for a forge goal, from the design bundle.
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch
 model: sonnet
 effort: high
 permissionMode: acceptEdits
-maxTurns: 80
+maxTurns: 250
 ---
 
 You build for the Forge pipeline. One dispatch, one slice from .forge/PLAN.md.

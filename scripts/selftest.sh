@@ -4,6 +4,7 @@
 # Checks: every script no-ops outside a forge project, behave against a
 # fixture .forge/, dod-gate blocks and releases correctly, rehydrate labels
 # both arming states, the four workflows parse, settings.json and every agent
+
 # frontmatter parse. Exits non-zero on any failure.
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -351,6 +352,47 @@ if command -v node >/dev/null 2>&1; then
     *"2 capture(s)"*) ok "the shots copy is not counted twice" ;;
     *) fail "capture double-count returned: $TITLE" ;;
   esac
+  # THE BOARD MUST NOT DELETE EVIDENCE. progress.mjs pruned every file in
+  # .forge/shots it did not recognise, on every evidence.sh call, from the
+  # directory captures live in. Run two's captures survived only because they
+  # sat in subdirectories, where unlinkSync throws EISDIR into an empty catch.
+  # Luck, not design. A name test is not enough either: copies are
+  # `<hash>-<basename>` and `d5-` is valid hex.
+  rm -rf "$T4/.forge/shots"; mkdir -p "$T4/.forge/shots/slice1"
+  printf 'capture\n' > "$T4/.forge/shots/flat-capture.png"
+  printf 'capture\n' > "$T4/.forge/shots/d5-01-aisle-dark-390.png"
+  printf 'capture\n' > "$T4/.forge/shots/slice1/nested.png"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  KEPT=0
+  for f in flat-capture.png d5-01-aisle-dark-390.png slice1/nested.png; do
+    [ -f "$T4/.forge/shots/$f" ] && KEPT=$((KEPT + 1))
+  done
+  [ "$KEPT" -eq 3 ] && ok "the board never deletes a capture it did not write" \
+    || fail "progress.mjs destroyed evidence ($KEPT of 3 survived)"
+
+  # A zero over a population the matcher never classified is not a measured
+  # zero. Run two named 76 captures by rubric id, none carried a screen number,
+  # and the panel said "0 of 7" beside a gallery full of screenshots.
+  # Clear BOTH capture directories: the previous case left a file carrying a
+  # legitimate 01 token, which would satisfy this one for the wrong reason.
+  rm -rf "$T4/.forge/evidence" "$T4/.forge/shots"
+  mkdir -p "$T4/.forge/evidence"
+  printf 'x\n' > "$T4/.forge/evidence/slice1-C34-catalogue-390.png"
+  printf 'x\n' > "$T4/.forge/evidence/f7-not-in-collection-390.png"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  grep -q 'carry no screen number' "$H" \
+    && ok "the screenmap says when it could not classify a capture" \
+    || fail "screenmap reported a silent zero over unclassified captures"
+  # And it must not GUESS: "not-in-collection" is an aisle-check verdict, not
+  # the collection screen. A wrong screen is worse than an unassigned one.
+  # Neither capture carries a 01 or 02 token, so NO screen may claim one. The
+  # tempting heuristic would match "catalogue" and "collection" against screen
+  # names; "not-in-collection" is an aisle-check verdict and would land on the
+  # wrong screen. A wrong screen is worse than an unassigned one.
+  grep -q 'srow s-cap' "$H" \
+    && fail "screenmap guessed a screen from a name substring" \
+    || ok "the screenmap does not guess a screen from a name substring"
   rm -rf "$T4"
 else
   fail "node not found; progress renderer unchecked"
@@ -416,6 +458,32 @@ else
   fail "node not found; workflows unchecked"
 fi
 
+# 6b. A seat is a contract between prose and configuration. Run two shipped four
+# seats that could not do their stated job: the verifier, the only seat allowed
+# to clear the Stop gate, had no Edit and flipped seven checkboxes through
+# `sed -i`; the finisher was told to write REPORT.md with `tools: Read, Bash`
+# and would have failed at the run's last step. The frontmatter test caught none
+# of it, because it only asked whether the YAML parsed.
+if command -v node >/dev/null 2>&1; then
+  node "$S/seat-check.mjs" "$ROOT/.claude/agents" >/dev/null 2>&1 \
+    && ok "every seat's tools grant what its prose orders" \
+    || { fail "a seat cannot do its own job:"; node "$S/seat-check.mjs" "$ROOT/.claude/agents" 2>&1 | sed 's/^/     /'; }
+
+  # And the check must fail on a broken seat, or it is decorative. Run two's own
+  # mutation pass found four tests that passed whether or not their code worked,
+  # including one written to close a check-lies-about-its-subject bug.
+  T9=$(mktemp -d)
+  cp "$ROOT/.claude/agents/verifier.md" "$T9/verifier.md"
+  # Strip Edit and Write back out, which is exactly how run two shipped it.
+  sed -i.bak -E 's/^tools:.*$/tools: Read, Grep, Glob, Bash, WebFetch/' "$T9/verifier.md"
+  rm -f "$T9"/*.bak
+  node "$S/seat-check.mjs" "$T9" >/dev/null 2>&1 \
+    && fail "seat-check passed a verifier with no way to write a checkbox" \
+    || ok "seat-check fails on a seat that cannot do its job"
+  rm -rf "$T9"
+else
+  fail "node not found; seat contracts unchecked"
+fi
 # 6. settings.json parses; every agent frontmatter is well formed.
 python3 -c "import json; json.load(open('$ROOT/.claude/settings.json'))" 2>/dev/null \
   && ok "settings.json parses" || fail "settings.json invalid"

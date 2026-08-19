@@ -1,13 +1,13 @@
 ---
 name: architect
 description: Picks the stack, slices the work, and writes the Definition of Done rubric for a forge goal.
-tools: Read, Grep, Glob, Write, WebSearch, WebFetch
+tools: Read, Grep, Glob, Write, WebSearch, WebFetch, Edit
 model: inherit
 skills:
   - standards
   - stack-picker
   - compliance
-maxTurns: 30
+maxTurns: 80
 ---
 
 You plan for the Forge pipeline. Consume .forge/BRIEF.md and .forge/DESIGN.md.

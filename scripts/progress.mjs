@@ -277,6 +277,18 @@ const screenMap = screens.map(sc => {
 })
 const shotMax = Math.max(1, ...screenMap.map(s => s.shots))
 const screensSeen = screenMap.filter(s => s.state === 'cap').length
+// How many captures carry no screen number at all. The matcher wants a token of
+// exactly 01 to 07; run two named its captures by rubric id, so 76 of 76 missed
+// and the panel read "0 of 7" with total confidence beside a gallery full of
+// screenshots. That is the defect this board exists to catch in the product,
+// sitting in the board.
+//
+// Attribution is NOT guessed from the name. "f7-not-in-collection-390.png" is a
+// verdict on the aisle check, not the collection screen, and a substring match
+// on the screen's own name would file it under 04. A wrong screen is worse than
+// an unclassified one, so the count is reported honestly and left unassigned.
+const screenTokens = new Set(screenMap.map(s => String(s.n).padStart(2, '0')))
+const unclassified = captureNames.filter(t => !t.some(x => screenTokens.has(x))).length
 const tied = new Set(screenMap.map(s => s.route).filter(Boolean))
 const untied = routesInTree.filter(r => !tied.has(r))
 
@@ -405,7 +417,28 @@ try {
       s.copy = `shots/${name}`
     } catch { s.copy = null }
   }
-  for (const f of readdirSync('.forge/shots')) if (!keep.has(f)) { try { unlinkSync(join('.forge/shots', f)) } catch {} }
+  // Prune only what this file wrote, read from a manifest it keeps, never
+  // inferred from the filename.
+  //
+  // `.forge/shots` is where builders and verifiers write evidence captures,
+  // and the sweep used to delete every entry it did not recognise, so a
+  // capture filed flat there was destroyed on the next `scripts/evidence.sh`
+  // call by the board that exists to display it. This run's captures survived
+  // only because they happened to sit in per-slice subdirectories, where
+  // unlinkSync throws EISDIR into an empty catch. Luck, not design.
+  //
+  // A name test is not enough either: copies are `<hash>-<basename>` and the
+  // hash is 1 to 8 hex characters, which `d5-01-aisle-dark-390.png` matches
+  // exactly. The same ambiguity already bites the screen-token counter above.
+  // A manifest cannot be fooled by a filename, so the manifest is the record.
+  const LEDGER = '.forge/shots/.progress-cache.json'
+  let wrote = []
+  try { wrote = JSON.parse(readFileSync(LEDGER, 'utf8')) } catch {}
+  for (const f of Array.isArray(wrote) ? wrote : []) {
+    if (keep.has(f)) continue
+    try { if (statSync(join('.forge/shots', f)).isFile()) unlinkSync(join('.forge/shots', f)) } catch {}
+  }
+  try { writeFileSync(LEDGER, JSON.stringify([...keep])) } catch {}
 } catch {}
 const gallery = latest.filter(s => s.copy)
 const showable = gallery.slice(0, 6)
@@ -766,6 +799,7 @@ overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .sbar{width:2.4rem;height:3px;border-radius:2px;background:var(--line);flex:none;overflow:hidden}
 .sbar i{display:block;height:100%;background:var(--accent)}
 .snb{font:400 .61rem/1.4 var(--mono);color:var(--muted);width:2.5ch;text-align:right;flex:none}
+.swarn{color:var(--negative)}
 .sfoot{margin-top:.5rem;padding-top:.45rem;border-top:1px solid var(--line);
 font-size:.61rem;line-height:1.45;color:var(--muted)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;
@@ -1008,7 +1042,7 @@ ${screenMap.length ? `
       <div class="sm"><span class="srt${s.gone ? ' gone' : ''}">${esc(s.route || (s.slice ? 'not routed' : ''))}</span><span class="ssl">${s.slice ? `s${s.slice}` : ''}</span><span class="sbar"><i style="width:${(s.shots / shotMax * 100).toFixed(0)}%"></i></span><span class="snb">${s.shots || ''}</span></div>
     </div>`).join('\n    ')}
     </div>
-    <div class="sfoot">${routesInTree.length ? `${routesInTree.length} route(s) in the tree, ${tied.size} tied to a screen${untied.length ? ` · untied: ${esc(trunc(untied.join(' '), 46))}` : ''}` : 'No router convention recognised in this tree.'}</div>
+    <div class="sfoot">${unclassified ? `<span class="swarn">${unclassified} capture(s) carry no screen number, so none is counted here. Name them &lt;screen&gt;-… , for example 02-catalogue-390.png.</span><br>` : ''}${routesInTree.length ? `${routesInTree.length} route(s) in the tree, ${tied.size} tied to a screen${untied.length ? ` · untied: ${esc(trunc(untied.join(' '), 46))}` : ''}` : 'No router convention recognised in this tree.'}</div>
   </div>` : ''}
 </main>
 

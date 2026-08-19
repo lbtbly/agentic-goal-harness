@@ -350,7 +350,8 @@ if command -v node >/dev/null 2>&1; then
   # a lead actually writes; a renderer that only reads "Current slice: 2"
   # draws ten grey chips and calls it a build.
   T4=$(mktemp -d); mkdir -p "$T4/.forge"; touch "$T4/.forge/ARMED"
-  printf '# DOD\n\n## Function\n- [x] F1. One.\n- [ ] F2. Two.\n- [ ] F3. Three.\n' > "$T4/.forge/DOD.md"
+  # Slice 1 closes F1 and F2, and a slice is done only when both are verified.
+  printf '# DOD\n\n## Function\n- [x] F1. One.\n- [x] F2. Two.\n- [ ] F3. Three.\n' > "$T4/.forge/DOD.md"
   printf '# Plan\n\n## Slices\n\n### 1. First slice\n\nBody.\n\nCloses on: F1 and F2 proven.\n\n### 2. Second slice\n\nBody.\n\nCloses on: F3 proven.\n' > "$T4/.forge/PLAN.md"
   printf '# Resume\n\nPhase 8, BUILD. Slice 2 of 2. The Stop gate is live.\n\n## Next action\n\n1. Dispatch the verifier.\n' > "$T4/.forge/RESUME.md"
   (cd "$T4" && node "$S/progress.mjs") 2>/dev/null
@@ -368,16 +369,19 @@ if command -v node >/dev/null 2>&1; then
   # The screenmap: roster from DESIGN, slice from PLAN (by number and by the
   # "the X page" shape), state from captures, routes from the tree. A screen
   # with no capture must never read as built, however the plan words it.
-  printf '# Design\n\n## Screen list\n\n| # | Screen | Link |\n|---|---|---|\n| 01 | Aisle check | x |\n| 02 | Landing | x |\n' > "$T4/.forge/DESIGN.md"
-  printf '# Plan\n\n## Slices\n\n### 1. First slice\n\nClient: screen 01 in full.\n\nCloses on: F1 proven.\n\n### 2. Second slice\n\nClient: the landing page.\n\nCloses on: F3 proven.\n' > "$T4/.forge/PLAN.md"
+  # Three screens so all three states are exercised: 01 has a capture, 02 belongs
+  # to the current slice, 03 belongs to a later one. The old fixture had two and
+  # asserted a planned state no screen in it could reach.
+  printf '# Design\n\n## Screen list\n\n| # | Screen | Link |\n|---|---|---|\n| 01 | Aisle check | x |\n| 02 | Landing | x |\n| 03 | Contributor | x |\n' > "$T4/.forge/DESIGN.md"
+  printf '# Plan\n\n## Slices\n\n### 1. First slice\n\nClient: screen 01 in full.\n\nCloses on: F1 proven.\n\n### 2. Second slice\n\nClient: the landing page.\n\nCloses on: F3 proven.\n\n### 3. Third slice\n\nClient: screen 03 later.\n\nCloses on: F4 proven.\n' > "$T4/.forge/PLAN.md"
   printf '# Resume\n\nPhase 8, BUILD. Slice 1 of 2.\n\n| # | Screen | Route | State |\n|---|---|---|---|\n| 01 | Aisle check | `/` | built |\n| 02 | Landing | not routed | slice 2 |\n' > "$T4/.forge/RESUME.md"
   mkdir -p "$T4/.forge/evidence" "$T4/app"
   : > "$T4/.forge/evidence/d5-01-aisle-dark-390.png"
   : > "$T4/.forge/evidence/c23-owned-1440.png"
   printf 'export default function P(){}\n' > "$T4/app/page.tsx"
   (cd "$T4" && node "$S/progress.mjs") 2>/dev/null
-  { grep -q 'panel scr' "$H" && grep -q 'srow s-cap' "$H" && grep -q 'srow s-pln' "$H" \
-    && grep -q '1 of 2' "$H" && grep -q 'route(s) in the tree' "$H"; } \
+  { grep -q 'panel scr' "$H" && grep -q 'srow s-cap' "$H" && grep -q 'srow s-bld' "$H" \
+    && grep -q 'srow s-pln' "$H" && grep -q '1 of 3' "$H" && grep -q 'route(s) in the tree' "$H"; } \
     && ok "progress draws the screenmap" || fail "progress did not draw the screenmap"
   # 1440 is a viewport width, not screen 14; 390 is not screen 39.
   SC=$(grep -o 'srow s-cap' "$H" | wc -l | tr -d ' ')
@@ -446,6 +450,27 @@ if command -v node >/dev/null 2>&1; then
   grep -q 'srow s-cap' "$H" \
     && fail "screenmap guessed a screen from a name substring" \
     || ok "the screenmap does not guess a screen from a name substring"
+  # THE CURSOR IS THE RUBRIC'S, NOT A SENTENCE'S. Run two's handoff line read
+  # "Current slice: verifying against the live URL. Slice 1 closed. Slice 2 at 8
+  # of 9". The parser took the first number on the line, which belonged to the
+  # word "closed", so the board showed slice 1 in flight while slices 1 to 3
+  # were fully verified and slice 4 stood at 8 of 12. A sentence ages; the
+  # checkboxes are the same ones the Stop gate counts.
+  printf '# DOD\n\n## Function\n- [x] F1. a\n- [x] F2. b\n- [x] F3. c\n- [ ] F4. d\n- [ ] F5. e\n' > "$T4/.forge/DOD.md"
+  printf '# Plan\n\n## Slices\n\n### 1. One\n\nCloses: F1\n\n### 2. Two\n\nCloses: F2\n\n### 3. Three\n\nCloses: F3\n\n### 4. Four\n\nCloses: F4, F5\n' > "$T4/.forge/PLAN.md"
+  printf 'Current slice: verifying against the live URL. Slice 1 closed. Slice 2 at 8 of 9.\n' > "$T4/.forge/RESUME.md"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  { grep -q 'slice 4 of 4' "$H" && [ "$(grep -c 'chip sl-done' "$H")" -eq 3 ] \
+    && grep -q 'sl-active" title="slice 4' "$H"; } \
+    && ok "the slice cursor comes from the rubric, not from stale prose" \
+    || fail "cursor read a sentence: $(grep -o 'slice [0-9]* of [0-9]*' "$H" | head -1)"
+
+  # And the chip carries its own count, so a truncated title is not the only
+  # thing the strip says about a slice.
+  grep -q '<i>3/3</i>\|<i>1/1</i>' "$H" \
+    && ok "each slice chip shows verified of total" \
+    || fail "slice chips lost their counts"
+
   # The environments strip, and its running indicator. The board said what had
   # been built and never where to look at it. A dot that cannot go out is
   # decoration, so this asserts BOTH states against a real listener.

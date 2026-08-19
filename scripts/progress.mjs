@@ -109,7 +109,7 @@ for (const [text, re] of SLICE_DIALECTS) {
 // The cursor. "Current slice: 3" is the written form; "Slice 3 of 10" is the
 // prose the lead writes in RESUME's header. A bare "slice 3" is never read as
 // the cursor: RESUME names other slices in prose on nearly every line.
-const curSlice = +((resume.match(/Current slice:[^\n]*?(\d+)/i)
+let curSlice = +((resume.match(/Current slice:[^\n]*?(\d+)/i)
   || resume.match(/\bslice[ \t]+(\d+)[ \t]+of[ \t]+\d+/i)
   || resume.match(/Next action:[^\n]*?slice (\d+)/i) || [, 0])[1])
 
@@ -132,6 +132,31 @@ for (const [n, body] of Object.entries(sliceBodies)) {
 // RESUME's header strip: the explicit "Key: value" lines when the lead writes
 // them, else the same three facts recovered from the prose header and the
 // first step under "## Next action".
+// THE CURSOR COMES FROM THE RUBRIC, not from a sentence. Prose said
+// "Current slice: verifying against the live URL. Slice 1 closed. Slice 2 at 8
+// of 9", and the parser took the first number on the line, which belonged to
+// the word "closed". The board then showed slice 1 in flight while slices 1, 2
+// and 3 were fully verified and slice 4 stood at 8 of 12.
+//
+// A slice is done when every line it Closes is checked. The cursor is the
+// lowest slice that is not. That reads the same checkboxes the Stop gate reads,
+// so it cannot disagree with the gate and cannot go stale while a handoff
+// sentence ages. Prose stays as the fallback for a run whose plan has no Closes
+// lists, and for the moment before anything is verified at all.
+const sliceProgress = {}
+for (const [n, ids] of Object.entries(sliceIds)) {
+  const known = ids.filter(id => byId[id])
+  if (!known.length) continue
+  sliceProgress[n] = { done: known.filter(id => byId[id].state === 'verified').length, all: known.length }
+}
+const ordered = Object.keys(sliceProgress).map(Number).sort((a, b) => a - b)
+const firstOpen = ordered.find(n => sliceProgress[n].done < sliceProgress[n].all)
+// Only override when the rubric has something to say: at least one slice fully
+// verified, or the named cursor already behind a finished slice.
+if (ordered.length && ordered.some(n => sliceProgress[n].done === sliceProgress[n].all)) {
+  curSlice = firstOpen || ordered[ordered.length - 1]
+}
+
 // Two states between open and evidence. The rubric could say nothing about a
 // line the builder was working on right now, so a board sat at 0 verified, 0
 // evidence, 122 open through hours of real work and looked identical to a run
@@ -840,12 +865,23 @@ transparent 7px 12px);animation:flow .7s linear infinite}
 0 2px 8px rgb(0 0 0 / .5)}}
 @keyframes flow{to{background-position:-12px 0}}
 @keyframes pulse{50%{opacity:.35}}}
-.slices{display:flex;gap:.6rem;justify-content:center;margin-top:.6rem;overflow:hidden}
-.slices .chip{font-size:.75rem;padding:5px 11px}
-.slices .chip .d{background:var(--line)}
-.slices .sl-done{color:var(--ink)}.slices .sl-done .d{background:var(--muted)}
-.slices .sl-active{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
-.slices .sl-active .d{background:var(--accent)}
+/* The dot is gone: it cost a fixed 11px of every chip plus its gap, on a strip
+   that has to carry thirteen titles. The slice NUMBER carries the state
+   instead, so the indicator costs nothing the label was not already paying. */
+.slices{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:center;
+margin-top:.5rem;overflow:hidden}
+.slices .chip{font-size:.72rem;padding:3px 8px;gap:.45rem;max-width:15rem;
+min-width:0;color:var(--muted)}
+.slices .chip b{font:500 .66rem/1.4 var(--mono);color:var(--muted);flex:none}
+.slices .chip i{font:400 .62rem/1.4 var(--mono);font-style:normal;
+color:var(--muted);opacity:.7;flex:none}
+.slices .chip>:not(b):not(i){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slices .sl-done{color:var(--ink)}
+.slices .sl-done b{color:var(--accent)}
+.slices .sl-active{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.slices .sl-active b{color:var(--accent)}
+.slices .sl-active i{color:var(--ink);opacity:1}
 main{display:grid;grid-template-columns:1.05fr 1.45fr .72fr;
 grid-template-rows:1.3fr .8fr;gap:.8rem;min-height:0}
 .panel.rub{grid-column:1;grid-row:1/3}
@@ -1054,7 +1090,12 @@ h1{white-space:normal}
   }).join('\n  ')}
   </div>
   ${sliceTitles.length ? `<div class="slices">
-  ${sliceTitles.map(s => `<span class="chip ${s.n < curSlice || (s.n === curSlice && shipped) ? 'sl-done' : s.n === curSlice ? 'sl-active' : ''}"><span class="d"></span>slice ${s.n} · ${esc(trunc(s.title, 30))}</span>`).join('\n  ')}
+  ${sliceTitles.map(s => {
+    const pr = sliceProgress[s.n]
+    const done = pr ? pr.done === pr.all : (s.n < curSlice || (s.n === curSlice && shipped))
+    const cls = done ? 'sl-done' : s.n === curSlice ? 'sl-active' : ''
+    return `<span class="chip ${cls}" title="slice ${s.n} · ${esc(s.title)}${pr ? ` · ${pr.done} of ${pr.all} verified` : ''}"><b>${s.n}</b>${esc(trunc(s.title, 44))}${pr ? `<i>${pr.done}/${pr.all}</i>` : ''}</span>`
+  }).join('\n  ')}
   </div>` : ''}
 </section>
 

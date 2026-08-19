@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, mkdirSync, copyFileSync, utimesSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { execSync } from 'node:child_process'
 
 if (!existsSync('.forge')) process.exit(0)
 
@@ -291,6 +292,68 @@ const screenTokens = new Set(screenMap.map(s => String(s.n).padStart(2, '0')))
 const unclassified = captureNames.filter(t => !t.some(x => screenTokens.has(x))).length
 const tied = new Set(screenMap.map(s => s.route).filter(Boolean))
 const untied = routesInTree.filter(r => !tied.has(r))
+
+// ------------------------------------------------------------- environments
+// Where to go and look at the thing. The board said what had been built and
+// never where to see it, so finding the running app meant hunting for a port.
+// Every URL here is one the run already wrote down; nothing is invented.
+const envText = [brief, plan, resume, evidence, greenlight, runlog, read('.forge/REPORT.md')].join('\n')
+const localPorts = new Set()
+const remotes = new Set()
+for (const m of envText.matchAll(/https?:\/\/[a-zA-Z0-9._:/-]+/g)) {
+  const u = m[0].replace(/[.,)*\]]+$/, '')
+  // Design boards, docs and dashboards are not environments to test in.
+  if (/claude\.ai|anthropic\.com|github\.com|nodejs\.org|neon\.tech|supabase\.com|vercel\.com/.test(u)) continue
+  const l = u.match(/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::(\d+))?/)
+  if (l) { localPorts.add(l[1] || '3000'); continue }
+  const o = u.match(/^https?:\/\/[^/\s]+/)
+  if (o) remotes.add(o[0])
+}
+// A port named in package.json is a local environment even if nothing recorded
+// a URL for it yet.
+for (const m of read('package.json').matchAll(/-p\s+(\d{2,5})/g)) localPorts.add(m[1])
+
+// Liveness. One lsof for every local port at once, and no network call at all
+// for them. This renders on every subagent stop, so nothing here may be slow.
+let listening = new Set()
+if (localPorts.size) {
+  try {
+    const out = execSync("lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null", { encoding: 'utf8', timeout: 2500 })
+    for (const m of out.matchAll(/:(\d+)\s+\(LISTEN\)/g)) listening.add(m[1])
+  } catch {}
+}
+// The deployed URL costs a request, so it is probed at most once a minute and
+// the verdict is cached. A board that hammers production to draw a dot is a
+// worse board.
+const PROBE_TTL = 60_000
+let probes = {}
+try { probes = JSON.parse(readFileSync('.forge/.env-probe.json', 'utf8')) } catch {}
+if (remotes.size) {
+  let touched = false
+  for (const o of remotes) {
+    if (probes[o] && Date.now() - probes[o].t < PROBE_TTL) continue
+    let code = '000'
+    try {
+      code = execSync(`curl -s -o /dev/null -m 4 -w '%{http_code}' ${JSON.stringify(o)}`,
+        { encoding: 'utf8', timeout: 6000 }).trim()
+    } catch {}
+    probes[o] = { t: Date.now(), code }
+    touched = true
+  }
+  if (touched) { try { writeFileSync('.forge/.env-probe.json', JSON.stringify(probes)) } catch {} }
+}
+
+const envs = [
+  ...[...remotes].sort().map(o => {
+    const c = (probes[o] || {}).code || '000'
+    return { label: 'production', href: o, shown: o.replace(/^https?:\/\//, ''),
+             up: /^[23]/.test(c), note: c === '000' ? 'no answer' : c }
+  }),
+  ...[...localPorts].sort((a, b) => a - b).map(port => ({
+    label: `local :${port}`, href: `http://localhost:${port}`, shown: `localhost:${port}`,
+    up: listening.has(port), note: listening.has(port) ? 'listening' : 'not running',
+  })),
+]
 
 // In play: the current slice's not-yet-verified lines, else newest evidenced.
 let inPlay = (sliceIds[curSlice] || []).map(id => byId[id]).filter(l => l && l.state !== 'verified')
@@ -702,6 +765,18 @@ header{display:flex;gap:1.25rem;align-items:center}
 header .id{flex:1;min-width:0}
 h1{font:500 1.25rem/1.3 var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chips{margin-top:.35rem;display:flex;gap:.4rem;white-space:nowrap;overflow:hidden}
+.envs{margin-top:.4rem;display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.env{display:inline-flex;align-items:center;gap:.4rem;padding:3px 9px;border-radius:6px;
+border:1px solid var(--line);background:var(--surface);text-decoration:none;
+font:400 .68rem/1.4 var(--mono);color:var(--muted)}
+.env:hover{border-color:var(--muted)}
+.env .d{width:6px;height:6px;border-radius:50%;flex:none;background:var(--line)}
+.env--up{color:var(--ink)}
+.env--up .d{background:var(--accent)}
+.env--down .d{background:transparent;border:1px solid var(--negative)}
+.env .el{font-weight:500}
+.env .eu{opacity:.65}
+@media (prefers-reduced-motion:no-preference){.env--up .d{animation:pulse 2.4s ease-in-out infinite}}
 .chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;
 font:500 .625rem/1.2 var(--sans);letter-spacing:.04em;
 background:var(--raised);color:var(--muted);border:1px solid var(--line)}
@@ -954,6 +1029,9 @@ h1{white-space:normal}
     ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''} · ${nOpen} open</span>${unrecorded.length ? `<span class="chip chip--warn" title="Built in an earlier slice and never recorded in EVIDENCE.md">${unrecorded.length} unrecorded</span>` : ''}` : ''}
     ${stackLine ? `<span class="chip">${esc(trunc(stackLine, 58))}</span>` : ''}
     </div>
+    ${envs.length ? `<div class="envs">
+    ${envs.map(e => `<a class="env ${e.up ? 'env--up' : 'env--down'}" href="${esc(e.href)}" target="_blank" rel="noreferrer" title="${esc(e.href)} · ${esc(e.note)}"><span class="d"></span><span class="el">${esc(e.label)}</span><span class="eu">${esc(e.shown)}</span></a>`).join('\n    ')}
+    </div>` : ''}
   </div>
   <div class="pct">
     <div class="n">${pct}%</div>

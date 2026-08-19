@@ -431,6 +431,35 @@ if command -v node >/dev/null 2>&1; then
   grep -q 'srow s-cap' "$H" \
     && fail "screenmap guessed a screen from a name substring" \
     || ok "the screenmap does not guess a screen from a name substring"
+  # The environments strip, and its running indicator. The board said what had
+  # been built and never where to look at it. A dot that cannot go out is
+  # decoration, so this asserts BOTH states against a real listener.
+  PORT=54893
+  printf 'Local dev at http://localhost:%s and nothing else.\n' "$PORT" > "$T4/.forge/BRIEF.md"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  grep -q "localhost:$PORT" "$H" \
+    && ok "the board lists a local environment it found in the state files" \
+    || fail "environments strip missed a recorded localhost URL"
+  grep -o "env env--down[^>]*localhost:$PORT" "$H" >/dev/null 2>&1 \
+    || grep -q 'env--down' "$H" \
+    && ok "a port nothing is listening on reads as down" \
+    || fail "a dead port did not read as down"
+
+  # Now actually listen on it.
+  ( python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > "$T4/.srv" )
+  SRV=$(cat "$T4/.srv" 2>/dev/null)
+  WAITED=0
+  while [ "$WAITED" -lt 20 ]; do
+    lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | grep -q ":$PORT " && break
+    WAITED=$((WAITED + 1))
+  done
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  grep -q 'env--up' "$H" \
+    && ok "the running indicator lights when the port is actually listening" \
+    || fail "a live port still read as down"
+  [ -n "$SRV" ] && kill "$SRV" 2>/dev/null
+  rm -f "$T4/.srv"
+
   rm -rf "$T4"
 else
   fail "node not found; progress renderer unchecked"

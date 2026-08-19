@@ -271,6 +271,44 @@ N=$( cd "$AL" && git rev-list --count HEAD )
 
 rm -rf "$AUD"
 
+# 3e-ii. A value is not a configuration. Run two's database URL was "set" at
+# every step and failed three different ways: masked, then unreachable, then
+# unauthenticated. The check only asked whether a value existed, so all three
+# reported identically. A Supabase project created through an API has a
+# generated password nobody has seen, and its connection string ships with the
+# literal placeholder because there was never anything to substitute.
+T10=$(mktemp -d); mkdir -p "$T10/.forge"
+{
+  echo '- [ ] env:FORGE_T_CONN    | A connection    | dashboard'
+  echo '- [ ] remote-env:FORGE_T_CONN | Deploy holds it | vercel env add'
+  echo '- [ ] run:true            | Works           | nothing'
+} > "$T10/.forge/PREFLIGHT.md"
+
+PH='postgresql://u:[YOUR-PASSWORD]@host:6543/postgres'
+OUT=$(FORGE_T_CONN="$PH" CLAUDE_PROJECT_DIR="$T10" "$S/preflight.sh" 2>/dev/null)
+printf '%s' "$OUT" | grep -q 'placeholder, not a value' \
+  && ok "preflight refuses a value that is still a placeholder" \
+  || fail "preflight accepted [YOUR-PASSWORD] as configured"
+
+OUT=$(FORGE_T_CONN='postgresql://u:real@host:6543/postgres' CLAUDE_PROJECT_DIR="$T10" "$S/preflight.sh" 2>/dev/null)
+printf '%s' "$OUT" | grep -q 'set on this machine' \
+  && ok "preflight says WHERE a value is set, not just that it is" \
+  || fail "preflight still reports a bare 'set'"
+
+# A check that cannot run must never answer the question it was asked.
+printf '%s' "$OUT" | grep -qE 'cannot check|not linked|does not hold' \
+  && ok "remote-env reports it could not check rather than passing" \
+  || fail "remote-env passed without checking the deploy target"
+
+# run: executes only under --probe, so a SessionStart report never runs
+# arbitrary commands out of a file the architect wrote.
+printf '%s' "$OUT" | grep -q 'not probed' \
+  && ok "run: stays inert without --probe" || fail "run: executed unprompted"
+OUT=$(CLAUDE_PROJECT_DIR="$T10" "$S/preflight.sh" --probe 2>/dev/null)
+printf '%s' "$OUT" | grep -q '\[x\] Works' \
+  && ok "run: executes under --probe" || fail "run: did not execute under --probe"
+rm -rf "$T10"
+
 # 4. rehydrate labels both arming states.
 printf '# Plan\n\n/goal Every line of .forge/DOD.md checked, with evidence recorded in .forge/EVIDENCE.md, and a PASS verdict from the verifier agent.\n' > "$T2/.forge/PLAN.md"
 OUT=$(CLAUDE_PROJECT_DIR="$T2" "$S/rehydrate.sh" 2>/dev/null)

@@ -75,13 +75,46 @@ live URL. One machine-checkable line each, read by scripts/preflight.sh:
     - [ ] path:.vercel     | Project linked     | vercel link
     - [ ] env:DATABASE_URL | Neon connection    | neon.tech, then vercel env add
 
-Four kinds: cmd:NAME[:MAJOR], path:PATH, env:VAR. Second field names the thing,
-third names the remedy and prints only while the item is outstanding. Derive
-the list from the stack, not from the rubric: this covers what the build needs
-to exist at all, which is a wider set than the lines whose proof needs console
-access. Name every paid tier and every account. A prerequisite the operator
-meets on day one costs a command; the same prerequisite found at slice 1 costs
-the slice. Never write a secret value into this file, only the variable's name.
+Five kinds:
+
+    cmd:NAME[:MAJOR]   the binary exists, at or above a major version
+    path:PATH          the path exists
+    env:VAR            a value exists ON THIS MACHINE
+    remote-env:VAR     the deploy target holds it
+    run:COMMAND        the command exits 0, so the thing actually works
+
+Second field names the thing, third names the remedy and prints only while the
+item is outstanding.
+
+THE LABEL MUST NAME THE PROPERTY THE CHECK ACTUALLY TESTS. This is the rule
+that matters most here, because a label that overstates is worse than no check:
+it converts an unknown into a false reassurance. `cmd:supabase` tests that a
+binary is installed, so its label says "Supabase CLI installed", never
+"authenticated with Supabase"; the second needs `run:supabase projects list`.
+`path:supabase/config.toml` tests that a file any offline `init` creates is
+present, so it is not "project linked". And `env:VAR` reads the machine the run
+is on, which says nothing about the deployed environment: under a heading that
+promises to describe what stands between the run and a live URL, pair it with
+`remote-env:VAR` or the label is a claim the check cannot support.
+
+Prefer `run:` for anything whose failure mode is authentication, quota, or
+permission, because presence and permission are different questions. Run two's
+database URL was present at every step and failed three ways: masked, then
+unreachable, then unauthenticated, all reported identically by a check that only
+asked whether a value existed.
+
+Derive the list from the stack, not from the rubric: this covers what the build
+needs to exist at all, which is a wider set than the lines whose proof needs
+console access. Name every paid tier and every account. A prerequisite the
+operator meets on day one costs a command; the same prerequisite found at slice
+1 costs the slice. Never write a secret value into this file, only the
+variable's name.
+
+When a provider creates a credential the operator never sees, say so in the
+remedy. A database created through an API generates a password nobody has read,
+its dashboard string carries a literal placeholder, and there is nothing to
+substitute: the remedy is "reset the password, then substitute", not "copy the
+connection string".
 
 Never write product code. Only ever write to .forge/. Never edit DOD.md after the greenlight unless the
 lead sends a slice back with three FAILs or a line provably measures

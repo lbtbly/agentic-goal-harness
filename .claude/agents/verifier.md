@@ -11,6 +11,23 @@ maxTurns: 150
 You verify for the Forge pipeline. You did not build this. Hunt for the reason
 it is not done.
 
+SCOPE FIRST. Read .forge/RESUME.md and PLAN.md and decide which of the two
+dispatches you are before you do anything else.
+
+- A FIRST verify of a slice, or the FINAL verify before ship: full scope.
+  Every step below, every line of .forge/DOD.md.
+- A RE-VERIFY after a FAIL: scoped. Your lines are the defect list you were
+  given, plus the slice's own `Closes:` ids, plus any line still `- [ ]`.
+  A line already `[x]` is not re-ruled. Steps 1 to 4 narrow to what those
+  lines touch: the personas whose loops they sit in, the screens they name,
+  the tests that cover them.
+
+The bar does not move and no line is skipped: a scoped re-verify rules on
+every line that is not already proven, and the final full pass proves all of
+them again on the finished product. What stops is re-walking a hundred and
+twenty verified lines, every persona and every screen, to confirm one CSS fix.
+Say at the top of your verdict which scope you took and why.
+
 Per dispatch:
 1. Load the live URL or run the local build.
 2. Walk the core loop as each persona and census role from .forge/BRIEF.md
@@ -25,9 +42,13 @@ Per dispatch:
    DESIGN.md's written intent, naming the limit. Never imply a comparison you
    did not make.
 4. Run the full test suite.
-5. Rule on every line of .forge/DOD.md. Check a line only with an evidence
+5. Rule on every line in your scope. Check a line only with an evidence
    reference recorded via scripts/evidence.sh, and flip it to [x] yourself:
-   the checkboxes are yours alone to write. Rule against DOD.md's thresholds
+   the checkboxes are yours alone to write. Record every line you rule
+   AGAINST with scripts/defect.sh "<ids>" "<severity>" "<one line: what is
+   wrong>", in the same pass. An unchecked box says a line is not done; it
+   has never said whether the line was refused or simply not reached, and
+   the difference is the whole state of the run. Rule against DOD.md's thresholds
    only; a threshold restated inside EVIDENCE.md is void. A passing spec is
    not a passing product: re-run the command against the shipped thing.
    Sweep the disqualifier list last.

@@ -12,7 +12,7 @@ S="$ROOT/scripts"
 # Every script, not a frozen list of nine: commit.sh and preflight.sh shipped
 # with no assertion that they stay silent and side-effect-free outside a
 # forge project, which is the guarantee this loop exists to hold.
-ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh commit.sh preflight.sh"
+ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh"
 FAILS=0
 ok()   { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; FAILS=$((FAILS+1)); }
@@ -218,6 +218,49 @@ printf '{"tool_input":{"file_path":"x"}}' | ( cd "$AC2" && CLAUDE_PROJECT_DIR="$
 [ $? -eq 0 ] && ok "checks stands down when the binary is genuinely absent" \
   || fail "checks blocked on a missing binary"
 
+# THE DEBOUNCE MUST NEVER SWALLOW A RED TREE. checks.sh runs on every Edit or
+# Write, a full typecheck and an uncached lint over the whole project, with the
+# failure fed back into the builder's context. That was most of why building
+# looked slow. It is now throttled per edit and absolute per dispatch, and the
+# throttle only ever starts from a GREEN pass: a broken tree is re-checked on
+# every edit until it is not broken.
+ACD="$AUD/checks3"; mkdir -p "$ACD/node_modules" "$ACD/.forge"
+printf '{"name":"x","scripts":{"typecheck":"node ./ok.js"}}\n' > "$ACD/package.json"
+printf 'process.exit(0);\n' > "$ACD/ok.js"
+printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" bash "$S/checks.sh" >/dev/null 2>&1 )
+[ -f "$ACD/.forge/.checks-stamp" ] && ok "a green pass stamps the debounce" \
+  || fail "no stamp written after a green pass"
+# Now break it. Inside the window the throttle skips, which is the point.
+printf 'process.exit(1);\n' > "$ACD/ok.js"
+printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" bash "$S/checks.sh" >/dev/null 2>&1 )
+[ $? -eq 0 ] && ok "the debounce skips a check inside its window" \
+  || fail "the debounce did not throttle"
+# And the per-dispatch gate ignores the window entirely, so a slice cannot end
+# dirty just because the last edit landed inside it.
+printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" FORGE_CHECKS_FULL=1 bash "$S/checks.sh" >/dev/null 2>&1 )
+[ $? -eq 2 ] && ok "the per-dispatch gate ignores the debounce" \
+  || fail "FORGE_CHECKS_FULL was throttled: a slice can end dirty"
+# A red pass must not stamp, or one green run would mute the next twenty edits.
+printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" FORGE_CHECKS_DEBOUNCE=0 bash "$S/checks.sh" >/dev/null 2>&1 )
+[ $? -eq 2 ] && ok "a red tree is re-checked once the window passes" \
+  || fail "a red tree stayed silent past its window"
+
+# The defect ledger. A rubric line refused by the verifier used to be
+# byte-identical here to one nobody had attempted.
+ADF="$AUD/defect"; mkdir -p "$ADF/.forge"
+( cd "$ADF" && CLAUDE_PROJECT_DIR="$ADF" bash "$S/defect.sh" "F19" "blocks" "rows visible to the wrong identity" >/dev/null 2>&1 )
+grep -q '^[0-9-]*T[0-9:]*Z | F19 | blocks | rows visible to the wrong identity$' "$ADF/.forge/DEFECTS.md" \
+  && ok "defect.sh appends a parseable ledger line" \
+  || fail "defect.sh wrote nothing usable"
+
+# RUNLOG carries the elapsed seconds, so the time split stops being an estimate.
+ARL="$AUD/runlog"; mkdir -p "$ARL/.forge"
+printf '{"agent_type":"builder"}' | ( cd "$ARL" && CLAUDE_PROJECT_DIR="$ARL" bash "$S/runlog.sh" >/dev/null 2>&1 )
+printf '{"agent_type":"verifier"}' | ( cd "$ARL" && CLAUDE_PROJECT_DIR="$ARL" bash "$S/runlog.sh" >/dev/null 2>&1 )
+grep -qE '^[0-9-]+T[0-9:]+Z \| verifier \| stopped \| [0-9]+s$' "$ARL/.forge/RUNLOG.md" \
+  && ok "runlog records the seat and the elapsed time" \
+  || fail "runlog still records a bare stop"
+
 # `[ -lt ]` has three outcomes and the code read two: a non-integer operand
 # exits 2, and && reads that exactly like "new enough".
 APF="$AUD/pf"; mkdir -p "$APF/.forge" "$APF/oldbin"
@@ -380,13 +423,35 @@ if command -v node >/dev/null 2>&1; then
   : > "$T4/.forge/evidence/c23-owned-1440.png"
   printf 'export default function P(){}\n' > "$T4/app/page.tsx"
   (cd "$T4" && node "$S/progress.mjs") 2>/dev/null
-  { grep -q 'panel scr' "$H" && grep -q 'srow s-cap' "$H" && grep -q 'srow s-bld' "$H" \
-    && grep -q 'srow s-pln' "$H" && grep -q '1 of 3' "$H" && grep -q 'route(s) in the tree' "$H"; } \
-    && ok "progress draws the screenmap" || fail "progress did not draw the screenmap"
-  # 1440 is a viewport width, not screen 14; 390 is not screen 39.
+  { grep -q 'panel scr' "$H" && grep -q 'srow s-cap' "$H" \
+    && grep -q 'designed, not routed' "$H" && grep -q '1 of 3' "$H" \
+    && grep -q 'route(s) on disk' "$H"; } \
+    && ok "progress draws the sitemap" || fail "progress did not draw the sitemap"
+  # 1440 is a viewport width, not screen 14; 390 is not screen 39. Only the
+  # aisle-check capture is attributed, and only because it carries the word
+  # "aisle": no bare number may put a capture on a screen.
   SC=$(grep -o 'srow s-cap' "$H" | wc -l | tr -d ' ')
-  [ "$SC" -eq 1 ] && ok "screenmap counts captures by exact screen token" \
-    || fail "screenmap miscounted captures (s-cap=$SC)"
+  [ "$SC" -eq 1 ] && ok "the sitemap counts captures by name, never by a bare number" \
+    || fail "sitemap miscounted captures (s-cap=$SC)"
+
+  # THE NUMBERING COLLISION. DESIGN.md numbers screens and DOD.md numbers
+  # surfaces, and the two disagree from position two onward. Run three's
+  # captures followed DOD's numbering, the matcher read them as DESIGN's, and
+  # five of seven rows counted another screen's captures under a confident
+  # "7 of 7". A leading 01 on a landing capture must not reach screen 01.
+  : > "$T4/.forge/evidence/look-01-landing-1440-dark.png"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  AISLE=$(grep -o 'title="[^"]*Aisle check[^"]*' "$H" | head -1)
+  LAND=$(grep -o 'title="[^"]*Landing[^"]*' "$H" | head -1)
+  case "$AISLE" in
+    *"1 capture(s)"*) ok "a DOD surface number never lands on a DESIGN screen" ;;
+    *) fail "the numbering collision is back: $AISLE" ;;
+  esac
+  case "$LAND" in
+    *"1 capture(s)"*) ok "the capture reaches the screen its own name says" ;;
+    *) fail "landing capture went nowhere: $LAND" ;;
+  esac
+  rm -f "$T4/.forge/evidence/look-01-landing-1440-dark.png"
 
   # Captures get filed per slice. A flat readdir returns the SUBDIRECTORY NAME
   # as if it were a file, so a screen whose captures all live one level down
@@ -404,7 +469,7 @@ if command -v node >/dev/null 2>&1; then
   mkdir -p "$T4/.forge/shots"
   : > "$T4/.forge/shots/ab12cd34-d5-01-aisle-dark-390.png"
   ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
-  TITLE=$(grep -o 'title="Aisle check[^"]*"' "$H" | head -1)
+  TITLE=$(grep -o 'title="[^"]*Aisle check[^"]*' "$H" | head -1)
   case "$TITLE" in
     *"2 capture(s)"*) ok "the shots copy is not counted twice" ;;
     *) fail "capture double-count returned: $TITLE" ;;
@@ -427,10 +492,38 @@ if command -v node >/dev/null 2>&1; then
   done
   [ "$KEPT" -eq 3 ] && ok "the board never deletes a capture it did not write" \
     || fail "progress.mjs destroyed evidence ($KEPT of 3 survived)"
+  # AND IT NO LONGER DELETES THE COPIES IT DID WRITE. Test runners wipe their
+  # output directories mid-run: 169 of the 250 capture paths named in one run's
+  # EVIDENCE.md no longer existed on disk. For those, this file's copy is the
+  # last surviving image of a ruling, and pruning it because it aged out of the
+  # newest sixty destroys the only proof there was. The unlink is gone from the
+  # renderer entirely, import included, so this is structural and not a policy
+  # anybody can walk back by editing a condition.
+  grep -q 'unlinkSync' "$S/progress.mjs" \
+    && fail "the renderer can delete files again" \
+    || ok "the renderer holds no delete at all"
+  mkdir -p "$T4/vanishing"
+  printf 'capture\n' > "$T4/vanishing/gone-soon-390.png"
+  printf '2026-01-01T00:00:00Z | F1 | vanishing/gone-soon-390.png\n' > "$T4/.forge/EVIDENCE.md"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  COPY=$(ls "$T4/.forge/shots" 2>/dev/null | grep 'gone-soon-390.png' | head -1)
+  rm -rf "$T4/vanishing"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  { [ -n "$COPY" ] && [ -f "$T4/.forge/shots/$COPY" ]; } \
+    && ok "the last copy of a vanished capture survives" \
+    || fail "the board pruned the only surviving image of a ruling"
+  rm -f "$T4/.forge/EVIDENCE.md"
 
   # A zero over a population the matcher never classified is not a measured
   # zero. Run two named 76 captures by rubric id, none carried a screen number,
   # and the panel said "0 of 7" beside a gallery full of screenshots.
+  #
+  # THE SENTENCE CHANGED, AND SO DID ITS ADVICE. It used to read "805 captures
+  # carry no screen number, so none is counted here" while the rows above it
+  # counted 46, and it prescribed naming captures <screen>-... , which is the
+  # very collision that mislabelled five of seven rows. It now reports the
+  # residue and prescribes nothing.
   # Clear BOTH capture directories: the previous case left a file carrying a
   # legitimate 01 token, which would satisfy this one for the wrong reason.
   rm -rf "$T4/.forge/evidence" "$T4/.forge/shots"
@@ -438,18 +531,76 @@ if command -v node >/dev/null 2>&1; then
   printf 'x\n' > "$T4/.forge/evidence/slice1-C34-catalogue-390.png"
   printf 'x\n' > "$T4/.forge/evidence/f7-not-in-collection-390.png"
   ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
-  grep -q 'carry no screen number' "$H" \
-    && ok "the screenmap says when it could not classify a capture" \
-    || fail "screenmap reported a silent zero over unclassified captures"
-  # And it must not GUESS: "not-in-collection" is an aisle-check verdict, not
-  # the collection screen. A wrong screen is worse than an unassigned one.
-  # Neither capture carries a 01 or 02 token, so NO screen may claim one. The
-  # tempting heuristic would match "catalogue" and "collection" against screen
-  # names; "not-in-collection" is an aisle-check verdict and would land on the
-  # wrong screen. A wrong screen is worse than an unassigned one.
+  grep -q 'prove no single screen' "$H" \
+    && ok "the sitemap says when it could not attribute a capture" \
+    || fail "sitemap reported a silent zero over unattributed captures"
+  # And it must not guess from a bare number or from a directory it invented.
+  # Neither capture names a screen in this roster: "catalogue" and "collection"
+  # are not Aisle check, Landing or Contributor. A wrong screen is worse than
+  # an unassigned one.
+  #
+  # WHAT THIS NO LONGER FORBIDS, AND WHY. The rule used to be that no name may
+  # ever attribute a capture, and that rule is what left every attribution to
+  # the number, which then read DOD's numbering as DESIGN's and put five of
+  # seven rows on the wrong screen. A capture whose own filename carries a
+  # screen's name IS a capture of that screen: "f7-not-in-collection-390.png"
+  # shows the collection screen without the item, and counting it as a capture
+  # of that screen is right. What it does NOT do is tell you the verdict, and
+  # the board has never claimed to draw verdicts from filenames.
   grep -q 'srow s-cap' "$H" \
-    && fail "screenmap guessed a screen from a name substring" \
-    || ok "the screenmap does not guess a screen from a name substring"
+    && fail "sitemap attributed a capture that names no screen in this roster" \
+    || ok "the sitemap does not guess a screen from an unrelated name"
+  # A SITEMAP IS A TREE. The panel drew the designer's flat list of seven and
+  # called it Screens while twenty-one routes sat on disk unmentioned, nested
+  # three deep, and the footer admitted "0 tied to a screen". Routes are the
+  # reality; the designed screens attach where they tie.
+  rm -rf "$T4/.forge/evidence" "$T4/.forge/shots"
+  mkdir -p "$T4/app/account/reset/confirm" "$T4/app/catalogue" "$T4/.forge/evidence"
+  printf 'export default function P(){}\n' > "$T4/app/account/reset/confirm/page.tsx"
+  printf 'export default function P(){}\n' > "$T4/app/catalogue/page.tsx"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  { grep -q 'style="--d:1"' "$H" && grep -q 'style="--d:3"' "$H" \
+    && grep -q 's-stub' "$H"; } \
+    && ok "the sitemap nests routes by depth and marks bare path segments" \
+    || fail "the sitemap is still flat"
+
+  # VIEWPORT AND THEME WERE ALWAYS IN THE FILENAMES. The old comment called 390
+  # and 1440 inert and dropped them, so a screen proved on a laptop only and a
+  # screen proved everywhere drew identically.
+  : > "$T4/.forge/evidence/aisle-390-light.png"
+  : > "$T4/.forge/evidence/aisle-390-dark.png"
+  : > "$T4/.forge/evidence/aisle-1440-light.png"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  ONCELLS=$(grep -o '<i class="on" title="mobile light"></i>' "$H" | wc -l | tr -d ' ')
+  OFFCELL=$(grep -c '<i class="" title="desktop dark"></i>' "$H" | tr -d ' ')
+  { [ "$ONCELLS" -ge 1 ] && [ "$OFFCELL" -ge 1 ]; } \
+    && ok "coverage separates mobile from desktop and light from dark" \
+    || fail "viewport coverage not drawn (on=$ONCELLS off=$OFFCELL)"
+
+  # The design is one click away. DESIGN.md already carries the Claude Design
+  # file per screen; claude.ai refuses to be framed, so it opens in a new tab.
+  printf '# Design\n\n## Screen list\n\n[00 Index](https://claude.ai/design/p/abc)\n\n| # | Screen | File |\n|---|---|---|\n| 01 | Aisle check | [open](https://claude.ai/design/p/abc?file=01+Aisle.dc.html) |\n| 02 | Landing | [open](https://claude.ai/design/p/abc?file=02+Landing.dc.html) |\n| 03 | Contributor | [open](https://claude.ai/design/p/abc?file=03+C.dc.html) |\n' > "$T4/.forge/DESIGN.md"
+  ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+  { grep -q 'class="dlink" href="https://claude.ai/design/p/abc?file=01' "$H" \
+    && grep -q 'target="_blank"' "$H"; } \
+    && ok "each screen links to its Claude Design file, in a new tab" \
+    || fail "design links missing"
+
+  # WORKTREES ARE NOT INVISIBLE. Seventeen had piled up on a two-day run, one
+  # locked, each a full checkout with its own .forge. Nothing is pruned here;
+  # the board says they are there.
+  if command -v git >/dev/null 2>&1; then
+    ( cd "$T4" && git init -q . && git config user.email t@t && git config user.name t \
+      && git add -A >/dev/null 2>&1 && git commit -qm base >/dev/null 2>&1 \
+      && git worktree add -q -b wt-one .wt-one >/dev/null 2>&1 ) 2>/dev/null
+    ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
+    grep -q '1 worktree' "$H" \
+      && ok "the board reports worktrees still on disk" \
+      || fail "worktrees stayed invisible"
+  else
+    ok "git absent; worktree chip unchecked"
+  fi
+
   # THE CURSOR IS THE RUBRIC'S, NOT A SENTENCE'S. Run two's handoff line read
   # "Current slice: verifying against the live URL. Slice 1 closed. Slice 2 at 8
   # of 9". The parser took the first number on the line, which belonged to the
@@ -486,16 +637,22 @@ if command -v node >/dev/null 2>&1; then
   # The environments strip, and its running indicator. The board said what had
   # been built and never where to look at it. A dot that cannot go out is
   # decoration, so this asserts BOTH states against a real listener.
+  #
+  # A DEAD PORT IS NOT AN ENVIRONMENT. Twelve of them had piled up on a two-day
+  # run, one the discard port :9 a verifier used as a deliberate negative
+  # control, each drawn as a link somebody might click. They collapse into one
+  # count that names them on hover, and only a port something is listening on
+  # gets a chip of its own.
   PORT=54893
   printf 'Local dev at http://localhost:%s and nothing else.\n' "$PORT" > "$T4/.forge/BRIEF.md"
   ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
-  grep -q "localhost:$PORT" "$H" \
-    && ok "the board lists a local environment it found in the state files" \
-    || fail "environments strip missed a recorded localhost URL"
-  grep -o "env env--down[^>]*localhost:$PORT" "$H" >/dev/null 2>&1 \
-    || grep -q 'env--down' "$H" \
-    && ok "a port nothing is listening on reads as down" \
-    || fail "a dead port did not read as down"
+  { grep -q 'env--dead' "$H" && grep -q "dead port" "$H" \
+    && grep -q ":$PORT" "$H"; } \
+    && ok "a port nothing is listening on collapses into the dead count" \
+    || fail "a dead port was not collapsed"
+  grep -q "env--up[^>]*localhost:$PORT" "$H" \
+    && fail "a dead port was drawn as a live environment" \
+    || ok "a dead port is never drawn as a live environment"
 
   # Now actually listen on it.
   ( python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > "$T4/.srv" )
@@ -506,9 +663,9 @@ if command -v node >/dev/null 2>&1; then
     WAITED=$((WAITED + 1))
   done
   ( cd "$T4" && node "$S/progress.mjs" ) 2>/dev/null
-  grep -q 'env--up' "$H" \
+  { grep -q 'env--up' "$H" && grep -q "localhost:$PORT" "$H"; } \
     && ok "the running indicator lights when the port is actually listening" \
-    || fail "a live port still read as down"
+    || fail "a live port never appeared"
   [ -n "$SRV" ] && kill "$SRV" 2>/dev/null
   rm -f "$T4/.srv"
 
@@ -549,12 +706,46 @@ printf '2026-01-01T00:00:00Z | F1 | proof\n2026-01-01T00:00:00Z | F2 | proof\n' 
   && ok "recording the evidence clears the debt" \
   || fail "debt survived the evidence that answers it"
 
-# Every line lands in exactly one bucket: the four must sum to the rubric.
+# THE VERDICTS OF RECORD REACH THE BOARD. A line that failed verification four
+# times was byte-identical here to a line nobody had attempted: DOD.md carries
+# a checkbox and nothing else, RUNLOG.md records no failures at all, and the
+# rulings sat unread in VERDICT-*.md. A red run and a green run drew the same.
+printf '# Verdict slice 1, 2026-01-01\n\nF1 PASS on the live URL.\nF2 FAIL. The export writes a header row and no rows.\n' \
+  > "$T8/.forge/VERDICT-slice1.md"
+( cd "$T8" && node "$S/progress.mjs" ) 2>/dev/null
+{ grep -q '1 failing' "$H8" && grep -q 'ruled against in slice 1' "$H8" \
+  && grep -q 'dotln fail' "$H8" && grep -q 'header row and no rows' "$H8"; } \
+  && ok "a FAIL ruling in a verdict file reaches the board with its reason" \
+  || fail "the board still cannot show a failure"
+
+# A later PASS closes it. Nothing is ever cleared by hand, because the only
+# legitimate way a line closes is by passing.
+printf '2026-01-02T00:00:00Z | F2 | PASS. 940 rows exported and read back.\n' >> "$T8/.forge/EVIDENCE.md"
+( cd "$T8" && node "$S/progress.mjs" ) 2>/dev/null
+grep -q '1 failing' "$H8" \
+  && fail "a failure survived the pass that answers it" \
+  || ok "a later pass clears the failure"
+
+# A ledger entry is read the same way, so a harness that writes one and a run
+# that never had one both light up.
+printf '2026-01-03T00:00:00Z | F1 | blocks | the aisle check answers for the device\n' \
+  > "$T8/.forge/DEFECTS.md"
+( cd "$T8" && node "$S/progress.mjs" ) 2>/dev/null
+grep -q 'answers for the device' "$H8" \
+  && ok "the defect ledger is read when one exists" \
+  || fail "DEFECTS.md went unread"
+rm -f "$T8/.forge/DEFECTS.md" "$T8/.forge/VERDICT-slice1.md"
+
+# Every line lands in exactly one bucket: the states must sum to the rubric.
+printf '# Verdict 2026-01-05\n\nF2 FAIL. Still empty.\n' > "$T8/.forge/VERDICT-x.md"
+printf '2026-01-01T00:00:00Z | F1 | proof\n' > "$T8/.forge/EVIDENCE.md"
+( cd "$T8" && node "$S/progress.mjs" ) 2>/dev/null
 SUM=$(node -e '
 const h=require("fs").readFileSync(process.argv[1],"utf8");
 const m=h.match(/([0-9]+) verified · ([0-9]+) evidence(?: · ([0-9]+) in build)? · ([0-9]+) open/);
 const u=(h.match(/>([0-9]+) unrecorded</)||[,0])[1];
-console.log(m ? (+m[1])+(+m[2])+(+(m[3]||0))+(+m[4])+(+u) : -1);
+const f=(h.match(/>([0-9]+) failing</)||[,0])[1];
+console.log(m ? (+m[1])+(+m[2])+(+(m[3]||0))+(+m[4])+(+u)+(+f) : -1);
 ' "$H8")
 [ "$SUM" -eq 4 ] && ok "the rubric states partition every line" \
   || fail "states do not partition the rubric (sum=$SUM of 4)"

@@ -163,9 +163,23 @@ by a builder dispatch, never by the lead. Only the user may conclude a run
 below one hundred percent; the verdict and each open line then land in
 RESUME.md, exactly as written.
 
-On L goals, run the verify-fanout workflow (one agent per rubric line) and,
-when the defect count is unknown, the defect-sweep workflow: keep sweeping
-until a full pass returns no new defects, never a fixed number of passes.
+The FIRST verify of a slice is full scope. A RE-VERIFY after a FAIL is scoped
+to the defect list plus that slice's `Closes:` ids plus any line still `- [ ]`,
+and you say so in the dispatch. The architect already guarantees the Closes
+lists partition DOD.md exactly, so the index exists; until now nothing but the
+progress board read it, and every re-verify re-walked all hundred and twenty
+lines, all personas and all screens to confirm one fix. Verification took as
+much wall-clock as building.
+
+Then, before SHIP, one FULL-SCOPE verify of the whole rubric against the
+finished product. That is where one hundred percent is proven, once, end to
+end. The bar does not move: the same lines are ruled on, by the same seat, to
+the same thresholds. What stops is proving the settled ones over and over.
+
+On L goals, run the verify-fanout workflow (one agent per UNCHECKED rubric
+line, capped, and it logs what the cap dropped) and, when the defect count is
+unknown, the defect-sweep workflow: keep sweeping until a full pass returns no
+new defects, never a fixed number of passes.
 
 Escalation ladder, apply without asking:
 - Two FAILs on the same slice: re-dispatch the builder with model raised one

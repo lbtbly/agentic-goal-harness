@@ -4,7 +4,7 @@
 // Wallboard layout in the Dark Bench style (styles-library): matte graphite,
 // dotted canvas, one rationed green. Fills one screen, no scroll.
 // The state files stay the source of truth; this file only draws them.
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, mkdirSync, copyFileSync, utimesSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, mkdirSync, copyFileSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { execSync } from 'node:child_process'
@@ -60,7 +60,92 @@ for (const line of evidence.split('\n')) {
 }
 const evidenceLines = evidence.trim() ? evidence.trim().split('\n') : []
 
-// Rubric: sections from ## headings, three states per line.
+// ------------------------------------------------------------------ defects
+// A rubric line that FAILED verification four times used to be byte-identical
+// on this board to a line nobody had attempted: DOD.md carries a checkbox and
+// nothing else, and RUNLOG.md records no failures at all. So the board drew a
+// red run and a green run the same way, which is the one thing a board must
+// never do.
+//
+// Three sources, in order of authority. All three are read-only; none of them
+// asks the run to write anything new, so a run already in flight lights up on
+// the next render.
+//
+//   1 .forge/VERDICT-*.md   the rulings of record, written per verify round
+//   2 .forge/DEFECTS.md     the ledger scripts/defect.sh appends to, when the
+//                           harness that wrote this state had one
+//   3 EVIDENCE.md prose     "R31 FAIL | ..." in the id field, or a body that
+//                           opens on FAIL / DEFECT / BLOCKED
+//
+// Conservative on purpose. A false red is worse than a missing one, so a
+// mention of the word "failed" halfway through a paragraph is not a ruling.
+const failures = {}
+const noteFail = (id, at, why, src) => {
+  if (!id) return
+  const prev = failures[id]
+  if (prev && prev.at >= at) return
+  failures[id] = { at, why: (why || '').replace(/\s+/g, ' ').trim(), src }
+}
+const RULING_RX = /\b([A-Z]{1,3}\d{1,3})\b[ \t]*(?:[-:–]|is|ruled|=)?[ \t]*\**(PASS|FAIL)\b/g
+// 1. Verdict files. Newest first by mtime, so a re-rule supersedes the round
+// it re-ran without either file having to know about the other.
+const verdictFiles = []
+try {
+  for (const f of readdirSync('.forge')) {
+    if (!/^VERDICT[-_.].*\.md$/i.test(f)) continue
+    let mt = 0; try { mt = statSync(`.forge/${f}`).mtimeMs } catch {}
+    verdictFiles.push({ f, mt })
+  }
+} catch {}
+verdictFiles.sort((a, b) => a.mt - b.mt)
+for (const { f, mt } of verdictFiles) {
+  const body = read(`.forge/${f}`)
+  // The date the ruling states beats the date the filesystem remembers. An
+  // mtime is not a fact about the run: copy the state directory anywhere and
+  // every verdict becomes simultaneous, and the ordering that decides whether
+  // a later PASS closes an earlier FAIL collapses with it.
+  const stamps = [...body.matchAll(/\b(\d{4}-\d{2}-\d{2})(?:T[\d:]+Z?)?/g)]
+    .map(x => Date.parse(x[0].length > 10 ? x[0] : `${x[1]}T23:59:59Z`)).filter(n => !isNaN(n))
+  const at = stamps.length ? Math.max(...stamps) : mt
+  for (const m of body.matchAll(RULING_RX)) {
+    if (m[2].toUpperCase() === 'PASS') {
+      if ((failures[m[1]] || {}).at <= at) delete failures[m[1]]
+      continue
+    }
+    // The sentence the ruling sits in, as the reason.
+    const from = body.lastIndexOf('\n', m.index) + 1
+    const to = body.indexOf('\n', m.index)
+    noteFail(m[1], at, body.slice(from, to < 0 ? body.length : to), f)
+  }
+}
+// 2. The ledger, when one exists. Absent on every run older than it, which is
+// why it is never the only source.
+for (const line of read('.forge/DEFECTS.md').split('\n')) {
+  const m = line.match(/^(\S+) \| ([^|]+) \| ([^|]*) \| (.*)$/)
+  if (!m) continue
+  const at = Date.parse(m[1]) || 0
+  for (const id of m[2].match(/[A-Za-z]+\d+/g) || [])
+    noteFail(id.toUpperCase(), at, `${m[3].trim()}: ${m[4]}`, 'DEFECTS.md')
+}
+// 3. Evidence prose, for the two days of history written before either of the
+// above existed. Only the id field and the head of the body are read.
+for (const line of evidenceLines) {
+  const m = line.match(/^(\S+) \| ([^|]+) \| (.*)$/)
+  if (!m) continue
+  const at = Date.parse(m[1]) || 0
+  const ids = m[2].match(/[A-Za-z]+\d+/g) || []
+  if (!ids.length) continue
+  const failedField = /\bFAIL(?:ED|S)?\b/i.test(m[2])
+  const failedHead = /^\**(?:FAIL|DEFECT|BLOCKED)\b/i.test(m[3].trim())
+    || /\bFAIL\b/.test(m[3].slice(0, 120))
+  const passedField = /\bPASS(?:ED|ES)?\b/i.test(m[2])
+  const passedHead = /^\**PASS\b/i.test(m[3].trim())
+  for (const raw of ids) {
+    const id = raw.toUpperCase()
+    if (failedField || failedHead) noteFail(id, at, m[3], 'EVIDENCE.md')
+    else if (passedField || passedHead) { if ((failures[id] || {}).at <= at) delete failures[id] }
+  }
+}
 const sections = []
 const byId = {}
 let cur = null
@@ -70,9 +155,15 @@ for (const line of dod.split('\n')) {
   const c = line.match(/^- \[([ x])\]\s+(?:[*_`]*([A-Za-z]+\d+)[*_`]*[.):]?\s+)?(.*)/)
   if (c && cur) {
     const id = c[2] || ''
+    // A failing line outranks an evidenced one: evidence was recorded and the
+    // verifier ruled against it. A CHECKED line is verified whatever the
+    // history says, because the checkbox is the run's own latest word.
+    const fail = id && c[1] !== 'x' ? failures[id] : null
     const l = {
-      id, text: c[3].replace(/[*_`]/g, ''),
-      state: c[1] === 'x' ? 'verified' : (id && evidenced.has(id) ? 'evidence' : 'open'),
+      id, text: c[3].replace(/[*_`]/g, ''), fail: fail || null,
+      state: c[1] === 'x' ? 'verified'
+        : fail ? 'failing'
+        : (id && evidenced.has(id) ? 'evidence' : 'open'),
     }
     cur.lines.push(l)
     if (id) byId[id] = l
@@ -198,6 +289,12 @@ for (const l of allLines) {
 const nBuilding = allLines.filter(l => l.state === 'building').length
 const unrecorded = allLines.filter(l => l.state === 'unrecorded')
 const nOpen = allLines.filter(l => l.state === 'open').length
+const failingLines = allLines.filter(l => l.state === 'failing')
+const nFailing = failingLines.length
+// Grouped the same way the debt is: the actionable form of "what is red" is
+// which slice owes the fix.
+const failBySlice = {}
+for (const l of failingLines) (failBySlice[sliceOf[l.id]] ||= []).push(l)
 // Grouped by the slice that owed them, newest debt first: "which slice walked
 // away without writing anything down" is the actionable form of the number.
 const debtBySlice = {}
@@ -218,6 +315,28 @@ if (!resumeTop.length) {
   if (next) resumeTop.push(['Next action', next])
 }
 
+// RESUME goes stale, and a stale handoff read beside a live rubric is how a
+// board lies without saying anything false. It claimed "37 of 124 checked" for
+// twelve hours while DOD.md held 71 and the Stop gate agreed with DOD.md. Where
+// RESUME states a count this file can recompute, the recomputed one wins and
+// the disagreement is named with its age.
+let resumeStale = ''
+{
+  // The count survives markdown emphasis, which RESUME writes it in:
+  // "Rubric: **37 of 124 checked.**"
+  const claimed = resume.match(/\bRubric[^\n:]*:[\s*_`]*(\d{1,4})\s+of\s+(\d{1,4})/i)
+    || resume.match(/[\s*_`](\d{1,4})\s+of\s+(\d{1,4})\s+(?:rubric\s+)?lines?\b/i)
+  const said = claimed ? +claimed[1] : null
+  const outOf = claimed ? +claimed[2] : null
+  if (said != null && outOf === allLines.length && said !== nVerified) {
+    let age = 0
+    try { age = Date.now() - statSync('.forge/RESUME.md').mtimeMs } catch {}
+    const h = Math.floor(age / 3600000)
+    resumeStale = `RESUME says ${said} of ${outOf}; the rubric holds ${nVerified}`
+      + (h ? `, and has not been rewritten for ${h}h` : '')
+  }
+}
+
 // ---------------------------------------------------------------- screenmap
 // The product's screens, and how far each one has actually got. Four sources,
 // each doing only what it is entitled to do: DESIGN.md names the screens,
@@ -234,36 +353,134 @@ if (!screens.length) {
 }
 screens = screens.filter((s, i, a) => a.findIndex(x => x.n === s.n) === i).sort((a, b) => a.n - b.n)
 
-// Screen to slice. Numbers first, because "screens 02 and 03" is unambiguous.
-// A screen still unclaimed falls back to its name, and only in the shape "the
-// landing page" or "screen Landing": a bare word match reads slice 1's "the
-// stamp landing captured" as the landing screen, which it is not. The Closes
-// clause is excluded either way; it describes proof, not what gets built.
-const rx = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// Screen to slice, from the numbers alone: "screens 02 and 03" is unambiguous
+// and nothing else here is. The name fallback that used to sit under this
+// ("the landing page", "screen Landing") produced ONE attribution in seven on
+// a thirteen-slice run and that one was wrong: it matched slice 13's
+// launch-kit sentence about capturing the landing page and filed the Landing
+// screen under the slice that photographs it rather than the slice that builds
+// it. A wrong slice is worse than no slice, so the fallback is gone. The
+// Closes clause stays excluded; it describes proof, not what gets built.
 const screenSlice = {}
 for (const [n, body] of Object.entries(sliceBodies)) {
   const built = body.split(/^Closes\b/im)[0]
   for (const m of built.matchAll(/\bscreens?[ \t]+(\d{1,2}(?:[ \t]*(?:,|and|&|to|through)[ \t]*\d{1,2})*)/gi)) {
     for (const d of m[1].match(/\d{1,2}/g) || []) if (screenSlice[+d] == null) screenSlice[+d] = +n
   }
-  for (const sc of screens) {
-    if (screenSlice[sc.n] != null) continue
-    if (new RegExp(`\\b${rx(sc.name)}[ \t]+(?:page|screen|view)\\b|\\bscreens?[ \t]+${rx(sc.name)}\\b`, 'i').test(built)) screenSlice[sc.n] = +n
-  }
 }
 
-// Captures per screen: a filename token equal to the zero-padded number.
-// Exact-token matching keeps "390" and "1440" out of it.
-// .forge/shots holds this script's OWN copies, named `<hash>-<basename>`, so
-// unioning the two directories counted every capture twice from the second
-// render onward: once as the original, once as the copy. Render one was right
-// and every render after it inflated, which is the worst shape a counter has.
-// Strip the hash and dedupe on the basename.
-const captureNames = [...new Set([
-  ...safeDir('.forge/evidence'),
-  ...safeDir('.forge/shots').map(f => f.replace(/^[0-9a-f]{1,8}-/, '')),
-])].map(f => f.replace(/\.[a-z0-9]+$/i, '').split('-'))
-const screenShots = n => captureNames.filter(t => t.includes(String(n).padStart(2, '0'))).length
+// --------------------------------------------------------- the capture index
+// Every capture the run has filed, read once, and used for three things: which
+// screen it proves, which viewport and theme it proves it at, and the gallery.
+//
+// THE BOARD DOES NOT COUNT ITS OWN COPIES. It writes display copies into the
+// flat level of .forge/shots as `<hash>-<basename>`, so unioning them with the
+// sources counted every capture twice from the second render onward, and the
+// copies written before the prune ledger existed can never be pruned and were
+// counted forever: 155 files sat flat in vitrine's shots directory against a
+// 60-entry ledger. A counter must read what the run produced, never what the
+// counter produced. So: the SUBDIRECTORIES of .forge/shots count, because that
+// is where builders and verifiers file their batches, and the flat level does
+// not, because that is this file's own pile.
+const CAPTURE_RX = /\.(png|jpe?g|webp)$/i
+const capWalk = (d, depth, acc = []) => {
+  let ents = []
+  try { ents = readdirSync(d, { withFileTypes: true }) } catch { return acc }
+  for (const e of ents) {
+    const p = `${d}/${e.name}`
+    if (e.isDirectory()) { if (depth > 0) capWalk(p, depth - 1, acc) }
+    else if (CAPTURE_RX.test(e.name)) acc.push(p)
+  }
+  return acc
+}
+const captureSources = []
+capWalk('.forge/evidence', 4, captureSources)
+capWalk('tests/screenshots', 1, captureSources)
+capWalk('launch/screenshots', 1, captureSources)
+capWalk('test-results', 3, captureSources)
+for (const p of capWalk('.forge/shots', 4)) if (p.split('/').length > 3) captureSources.push(p)
+// EVIDENCE.md names captures by path. Vitrine names 250 and 169 of them no
+// longer exist, because test runners wipe their output directories. A run
+// whose proof has evaporated should say so rather than quietly shrink.
+let evidenceNamed = 0, evidenceGone = 0
+for (const p of new Set([...evidence.matchAll(/[\w./-]+\.(?:png|jpe?g|webp)/gi)].map(m => m[0]))) {
+  evidenceNamed++
+  if (existsSync(p)) captureSources.push(p); else evidenceGone++
+}
+// Tokens are the basename plus its parent directory. The directory is named by
+// the agent that filed the batch (`.forge/shots/r25-landing/`), so it is a
+// statement about what was under test, not a substring of a screen's name.
+const captures = [...new Set(captureSources)].map(p => {
+  const parts = p.split('/')
+  const base = parts.pop().replace(/\.[a-z0-9]+$/i, '')
+  const t = `${base}-${parts.pop() || ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+  return { p, t }
+})
+
+// Viewport and theme, which the run has been writing all along. The old
+// comment called 390 and 1440 "inert" and dropped them; they are the whole
+// answer to "is this proved on a phone as well as a laptop".
+const viewportOf = t => {
+  if (/^(mobile|phone|handset)$/.test(t)) return 'm'
+  if (/^(tablet|ipad)$/.test(t)) return 't'
+  if (/^(desktop|laptop|wide)$/.test(t)) return 'd'
+  if (!/^\d{3,4}$/.test(t)) return ''
+  const n = +t
+  if (n < 320 || n > 3840) return ''
+  return n < 500 ? 'm' : n < 1024 ? 't' : 'd'
+}
+for (const c of captures) {
+  c.vp = ''
+  for (const t of c.t) { const v = viewportOf(t); if (v) { c.vp = v; break } }
+  c.theme = c.t.includes('dark') ? 'dark' : c.t.includes('light') ? 'light' : ''
+}
+
+// Attribution. A NUMBER IS NEVER ENOUGH ON ITS OWN. DESIGN.md numbers seven
+// screens and DOD.md numbers fourteen surfaces, and the two disagree from
+// position two onward, so `look-01-landing-390-dark.png` is DOD surface 1 and
+// the old matcher filed it under DESIGN screen 01, "Aisle check". Five of
+// seven rows counted another screen's captures and the panel read "7 of 7"
+// with total confidence. That is the defect this board exists to catch in the
+// product, sitting in the board.
+//
+// So attribution is corroborated or it does not happen, and a capture two
+// screens could claim is claimed by neither. Two ways in:
+//   name    a word from the screen's own name among the tokens
+//   rubric  an id in the name, mapped to a slice by its Closes clause, mapped
+//           to a screen by that slice, and only when the slice brings one
+const NAME_STOP = new Set(['the', 'and', 'for', 'with', 'page', 'screen', 'view', 'from', 'this'])
+const screenWords = {}
+for (const sc of screens) {
+  screenWords[sc.n] = sc.name.toLowerCase().split(/[^a-z0-9]+/)
+    .filter(w => w.length > 2 && !NAME_STOP.has(w))
+}
+const screensOfSlice = {}
+for (const sc of screens) {
+  const n = screenSlice[sc.n]
+  if (n != null) (screensOfSlice[n] ||= []).push(sc.n)
+}
+const attribute = c => {
+  const tk = new Set(c.t)
+  const byName = screens.filter(sc => (screenWords[sc.n] || []).some(w => tk.has(w)))
+  if (byName.length) return byName.length === 1 ? byName[0].n : 0
+  for (const t of c.t) {
+    if (!/^[a-z]+\d+$/.test(t)) continue
+    const sl = sliceOf[t.toUpperCase()]
+    if (sl == null) continue
+    const cand = screensOfSlice[sl] || []
+    return cand.length === 1 ? cand[0] : 0
+  }
+  return 0
+}
+for (const c of captures) c.screen = attribute(c)
+const capsByScreen = {}
+for (const c of captures) if (c.screen) (capsByScreen[c.screen] ||= []).push(c)
+
+// Coverage: mobile and desktop, light and dark. Four cells, filled or hollow,
+// so a screen proved on a laptop only reads as half done at a glance.
+const COVER = [['m', 'light'], ['m', 'dark'], ['d', 'light'], ['d', 'dark']]
+const COVER_LABEL = ['mobile light', 'mobile dark', 'desktop light', 'desktop dark']
+const coverOf = cs => COVER.map(([v, th]) => cs.some(c => c.vp === v && c.theme === th))
 
 // Routes the run declares, from RESUME's screen table. Scoped to a table whose
 // header says "Screen" so other numbered tables cannot be read as this one.
@@ -283,8 +500,12 @@ for (const l of rtTable) {
 
 // Routes on disk. One detector per router convention; unknown stacks simply
 // yield nothing and the panel drops its route column rather than inventing it.
+// `worktrees` is listed even though the leading-dot test below already skips
+// `.claude/worktrees`: a project that nests its worktrees undotted would
+// otherwise count all of its routes once per worktree.
 const ROUTE_SKIP = new Set(['node_modules', '.git', '.next', '.forge', 'dist', 'build', 'out',
-  '.expo', '.svelte-kit', '.nuxt', 'coverage', '.turbo', 'ios', 'android', 'vendor', 'target'])
+  '.expo', '.svelte-kit', '.nuxt', 'coverage', '.turbo', 'ios', 'android', 'vendor', 'target',
+  'worktrees'])
 const walkRoutes = (d, depth, acc) => {
   if (depth > 8 || acc.length > 6000) return acc
   let ents = []
@@ -306,30 +527,117 @@ const routesInTree = [...new Set(walkRoutes('.', 0, []).map(f => {
 }).filter(Boolean).map(r => (r.replace(/\/\([^)]*\)/g, '').replace(/\[\.\.\.(\w+)\]/g, '*')
   .replace(/\[(\w+)\]/g, ':$1').replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1') || '/')))].sort()
 
+// Where each designed screen lives. RESUME's declared table is first
+// authority. Slug equality on the route's last segment is second, and only
+// equality: "Catalogue" ties to /catalogue, "Contributor" does not tie to
+// /contribute, and it is right not to.
+const routeSlug = r => (r.split('/').filter(Boolean).pop() || 'index').toLowerCase().replace(/[^a-z0-9]/g, '')
+// A screen offers a few spellings of itself, all of them still equality and
+// none of them a substring: the whole name, the name without a leading
+// article or possessive ("My collection" reaches /collection), and its last
+// word ("Aisle check" reaches /check). The root gets the words the web has
+// always used for it. "Contributor" still does not reach /contribute, and that
+// is the point: near-misses stay misses.
+const ROOT_WORDS = new Set(['landing', 'home', 'index', 'root', 'start'])
+const LEAD_DROP = new Set(['my', 'the', 'a', 'an', 'your', 'public', 'new'])
+const screenSlugs = sc => {
+  const words = sc.name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+  const out = new Set([words.join('')])
+  if (words.length > 1 && LEAD_DROP.has(words[0])) out.add(words.slice(1).join(''))
+  if (words.length > 1) out.add(words[words.length - 1])
+  return out
+}
+const screenRoute = {}
+{
+  const claims = {}
+  for (const sc of screens) {
+    let route = declRoute[sc.n] || ''
+    if (!route) {
+      const want = screenSlugs(sc)
+      const hit = routesInTree.filter(r =>
+        want.has(routeSlug(r)) || (r === '/' && [...want].some(w => ROOT_WORDS.has(w))))
+      if (hit.length === 1) route = hit[0]
+    }
+    if (route) (claims[route] ||= []).push({ n: sc.n, declared: !!declRoute[sc.n] })
+  }
+  // One route, one screen. A declaration in RESUME beats an inference from a
+  // name; two inferences cancel, and the losers fall through to the "designed,
+  // not routed" list rather than vanishing off the board, which is what
+  // happened when the map was keyed by route and the second claimant was
+  // silently overwritten.
+  for (const [route, cs] of Object.entries(claims)) {
+    const declared = cs.filter(c => c.declared)
+    const win = cs.length === 1 ? cs[0] : declared.length === 1 ? declared[0] : null
+    if (win) screenRoute[win.n] = route
+  }
+}
+// Where the designer drew it. DESIGN.md's screen table carries the Claude
+// Design file per row and an index link above the table; both are worth a
+// click from the board, and claude.ai refuses to be framed, so both open in a
+// new tab rather than a popin.
+const designLink = {}
+for (const m of screenScope.matchAll(/^\|[ \t]*(\d{1,2})[ \t]*\|[^|\n]*\|[^|\n]*?\((https:\/\/[^)\s]+)\)/gm)) {
+  designLink[+m[1]] = m[2]
+}
+const designIndex = (design.match(/\[[^\]]*\]\((https:\/\/claude\.ai\/design\/p\/[^)\s]+)\)/) || [, ''])[1]
+
 const screenMap = screens.map(sc => {
-  const shots = screenShots(sc.n)
+  const caps = capsByScreen[sc.n] || []
   const slice = screenSlice[sc.n]
+  const route = screenRoute[sc.n] || ''
   return {
-    ...sc, shots, slice,
-    route: declRoute[sc.n] || '',
-    gone: !!declRoute[sc.n] && routesInTree.length > 0 && !routesInTree.includes(declRoute[sc.n]),
-    state: shots ? 'cap' : (slice && slice === curSlice ? 'bld' : 'pln'),
+    ...sc, shots: caps.length, slice, route, cover: coverOf(caps),
+    href: designLink[sc.n] || '',
+    gone: !!route && routesInTree.length > 0 && !routesInTree.includes(route),
+    state: caps.length ? 'cap' : (slice && slice === curSlice ? 'bld' : 'pln'),
   }
 })
 const shotMax = Math.max(1, ...screenMap.map(s => s.shots))
 const screensSeen = screenMap.filter(s => s.state === 'cap').length
-// How many captures carry no screen number at all. The matcher wants a token of
-// exactly 01 to 07; run two named its captures by rubric id, so 76 of 76 missed
-// and the panel read "0 of 7" with total confidence beside a gallery full of
-// screenshots. That is the defect this board exists to catch in the product,
-// sitting in the board.
-//
-// Attribution is NOT guessed from the name. "f7-not-in-collection-390.png" is a
-// verdict on the aisle check, not the collection screen, and a substring match
-// on the screen's own name would file it under 04. A wrong screen is worse than
-// an unclassified one, so the count is reported honestly and left unassigned.
-const screenTokens = new Set(screenMap.map(s => String(s.n).padStart(2, '0')))
-const unclassified = captureNames.filter(t => !t.some(x => screenTokens.has(x))).length
+// Captures the run filed that no screen can claim. Honest residue, not an
+// accusation: a capture proving a rubric line about rate limiting belongs to
+// no screen, and saying so beats inventing a home for it.
+const unclassified = captures.filter(c => !c.screen).length
+const screenOfRoute = {}
+for (const s of screenMap) if (s.route && screenOfRoute[s.route] == null) screenOfRoute[s.route] = s
+
+// --------------------------------------------------------------- the sitemap
+// The site as a tree, which is what a sitemap is. The old panel drew the
+// designer's flat list of seven and called it Screens while twenty-one routes
+// sat on disk unmentioned, nested three deep. Routes are the reality; the
+// designed screens attach to them where they tie, and are listed underneath
+// where they do not.
+const routeCaps = r => {
+  const want = routeSlug(r)
+  if (!want || want === 'index') return []
+  return captures.filter(c => c.t.includes(want))
+}
+const sitemap = []
+{
+  const nodes = new Map()
+  for (const r of routesInTree) {
+    const segs = r === '/' ? [] : r.split('/').filter(Boolean)
+    for (let i = 0; i <= segs.length; i++) {
+      const path = i === 0 ? '/' : '/' + segs.slice(0, i).join('/')
+      if (nodes.has(path)) continue
+      nodes.set(path, {
+        path, depth: i, seg: i === 0 ? '/' : segs[i - 1],
+        real: routesInTree.includes(path),
+      })
+    }
+  }
+  for (const n of [...nodes.values()].sort((a, b) => a.path.localeCompare(b.path))) {
+    const sc = screenOfRoute[n.path]
+    const caps = sc ? (capsByScreen[sc.n] || []) : routeCaps(n.path)
+    sitemap.push({ ...n, screen: sc || null, shots: caps.length, cover: coverOf(caps) })
+  }
+}
+const routeShotMax = Math.max(1, ...sitemap.map(s => s.shots))
+// Every designed screen the tree does not already draw. Keyed off what was
+// actually rendered, not off whether a route was computed, so a screen can
+// never fall between the two lists.
+const drawnScreens = new Set(sitemap.map(n => n.screen && n.screen.n).filter(Boolean))
+const unrouted = screenMap.filter(s => !drawnScreens.has(s.n))
 const tied = new Set(screenMap.map(s => s.route).filter(Boolean))
 const untied = routesInTree.filter(r => !tied.has(r))
 
@@ -340,6 +648,7 @@ const untied = routesInTree.filter(r => !tied.has(r))
 const envText = [brief, plan, resume, evidence, greenlight, runlog, read('.forge/REPORT.md')].join('\n')
 const localPorts = new Set()
 const remotes = new Set()
+const remoteUrls = {}
 for (const m of envText.matchAll(/https?:\/\/[a-zA-Z0-9._:/-]+/g)) {
   const u = m[0].replace(/[.,)*\]]+$/, '')
   // Design boards, docs and dashboards are not environments to test in.
@@ -347,7 +656,12 @@ for (const m of envText.matchAll(/https?:\/\/[a-zA-Z0-9._:/-]+/g)) {
   const l = u.match(/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::(\d+))?/)
   if (l) { localPorts.add(l[1] || '3000'); continue }
   const o = u.match(/^https?:\/\/[^/\s]+/)
-  if (o) remotes.add(o[0])
+  // The origin is where a person goes to look at the thing, so it is what the
+  // chip links to. The FULL url is kept beside it, because that is what gets
+  // probed: asking bare origins cannot tell a deploy from an image host, since
+  // upload.wikimedia.org answers its own root with a perfectly good HTML page
+  // while the only thing the run ever wrote for it was a .png.
+  if (o) { remotes.add(o[0]); (remoteUrls[o[0]] ||= new Set()).add(u) }
 }
 // A port named in package.json is a local environment even if nothing recorded
 // a URL for it yet.
@@ -365,6 +679,14 @@ if (localPorts.size) {
 // The deployed URL costs a request, so it is probed at most once a minute and
 // the verdict is cached. A board that hammers production to draw a dot is a
 // worse board.
+//
+// AN ENVIRONMENT IS A URL THAT ANSWERS WITH HTML. The old rule was a denylist
+// of dashboard hostnames, and a denylist only ever knows what somebody
+// remembered to add: it filtered supabase.com and drew the project's own
+// database at aaxlmxludhrjlsyfgeqj.supabase.co as `production`, drew the
+// object store beside it, and drew upload.wikimedia.org green because a CDN
+// answers 301. None of the three is a place to go and look at the product.
+// The content type settles all of them at once and needs no maintenance.
 const PROBE_TTL = 60_000
 let probes = {}
 try { probes = JSON.parse(readFileSync('.forge/.env-probe.json', 'utf8')) } catch {}
@@ -372,28 +694,119 @@ if (remotes.size) {
   let touched = false
   for (const o of remotes) {
     if (probes[o] && Date.now() - probes[o].t < PROBE_TTL) continue
-    let code = '000'
-    try {
-      code = execSync(`curl -s -o /dev/null -m 4 -w '%{http_code}' ${JSON.stringify(o)}`,
-        { encoding: 'utf8', timeout: 6000 }).trim()
-    } catch {}
-    probes[o] = { t: Date.now(), code }
+    // The urls the run actually wrote for this origin, shortest path first, at
+    // most three. Shortest first because the root is the likeliest page and
+    // the likeliest to settle it in one request.
+    const targets = [...(remoteUrls[o] || new Set([o]))].sort((a, b) => a.length - b.length).slice(0, 3)
+    let code = '000', ctype = '', html = false, known = false
+    for (const t of targets) {
+      let c = '000', ct = ''
+      try {
+        // Redirects are followed: without -L a CDN answers 301 with no content
+        // type at all and is indistinguishable from a deploy that redirects to
+        // its canonical domain.
+        const out = execSync(`curl -sL -o /dev/null -m 6 -w '%{http_code} %{content_type}' ${JSON.stringify(t)}`,
+          { encoding: 'utf8', timeout: 9000 }).trim().split(/\s+/)
+        c = out[0] || '000'; ct = (out[1] || '').toLowerCase()
+      } catch {}
+      if (!known || t === o) { code = c; ctype = ct }
+      // Answered at all, whatever it said. A 404 is an answer; only a
+      // transport failure leaves the question open.
+      if (c !== '000') known = true
+      // HTML is not enough on its own: upload.wikimedia.org serves its 404
+      // page as text/html, so a content-type test alone re-admits the image
+      // host it was written to exclude. The answer has to be a page the server
+      // meant to give. 401 and 403 count, because a deploy behind access
+      // protection is still the place to go and look at the thing.
+      if (ct.includes('text/html') && /^(2|3)|^40[13]$/.test(c)) {
+        html = true; code = c; ctype = ct; break
+      }
+    }
+    // `html` and `known` are remembered and never unset by a later blip: a
+    // deploy that served the product yesterday and 502s now is a regression the
+    // board must show, not an entry it should quietly drop, and a probe that
+    // could not run at all leaves the entry undecided rather than deleted.
+    const was = probes[o] || {}
+    probes[o] = { t: Date.now(), code, ctype, html: was.html || html, known: was.known || known }
     touched = true
   }
   if (touched) { try { writeFileSync('.forge/.env-probe.json', JSON.stringify(probes)) } catch {} }
 }
+// Kept: anything that has ever served HTML, anything nobody has managed to
+// reach yet, and anything answering 5xx. Dropped: everything that answered
+// cleanly with something that is not a page.
+//
+// Undecided is not the same as refused, so a board with no network must not
+// quietly delete the deploy it drew a minute ago. And a 5xx is the one failure
+// worth a chip on its own: the thing exists and is broken, which is exactly
+// what somebody needs to see. A 4xx on every url the run recorded means this
+// origin was never a place to go and look at the product.
+const isEnv = o => {
+  const p = probes[o] || {}
+  return p.html || !p.known || /^5/.test(p.code || '')
+}
 
+const liveLocal = [...localPorts].filter(p => listening.has(p)).sort((a, b) => a - b)
+const deadLocal = [...localPorts].filter(p => !listening.has(p)).sort((a, b) => a - b)
 const envs = [
-  ...[...remotes].sort().map(o => {
+  ...[...remotes].filter(isEnv).sort().map(o => {
     const c = (probes[o] || {}).code || '000'
     return { label: 'production', href: o, shown: o.replace(/^https?:\/\//, ''),
              up: /^[23]/.test(c), note: c === '000' ? 'no answer' : c }
   }),
-  ...[...localPorts].sort((a, b) => a - b).map(port => ({
+  ...liveLocal.map(port => ({
     label: `local :${port}`, href: `http://localhost:${port}`, shown: `localhost:${port}`,
-    up: listening.has(port), note: listening.has(port) ? 'listening' : 'not running',
+    up: true, note: 'listening',
   })),
-]
+].sort((a, b) => (b.up ? 1 : 0) - (a.up ? 1 : 0))
+// Dead local ports are not environments, they are litter: a verifier boots a
+// dev server on a free port, writes the URL into its evidence, and the port is
+// gone a minute later. Twelve of them had accumulated on a two-day run, one of
+// them the discard port :9 used as a deliberate negative control. They collapse
+// into one count that names them on hover.
+const deadTitle = deadLocal.length
+  ? `Ports a run wrote down that nothing is listening on now: ${deadLocal.map(p => `:${p}`).join(' ')}`
+  : ''
+
+// ---------------------------------------------------------------- worktrees
+// Parallel builders work in git worktrees, and nothing has ever cleaned up
+// after them: seventeen had accumulated on a two-day run, one still locked,
+// each holding a full checkout with its own .forge and about twelve hundred
+// captures the main board cannot see. The board does not prune them, because
+// deleting a builder's checkout is not a rendering decision. It says they are
+// there, and it says how much evidence is stranded inside them.
+let worktrees = []
+try {
+  const wtCache = probes['#worktrees']
+  if (wtCache && Date.now() - wtCache.t < PROBE_TTL) worktrees = wtCache.v
+  else {
+    const out = execSync('git worktree list --porcelain 2>/dev/null',
+      { encoding: 'utf8', timeout: 4000 })
+    let cur = null
+    for (const line of out.split('\n')) {
+      if (line.startsWith('worktree ')) { cur = { path: line.slice(9), branch: '', locked: false }; worktrees.push(cur) }
+      else if (cur && line.startsWith('branch ')) cur.branch = line.slice(7).replace(/^refs\/heads\//, '')
+      else if (cur && line.startsWith('locked')) cur.locked = true
+    }
+    // The first entry is the main checkout, which is not a worktree to report.
+    worktrees = worktrees.slice(1)
+    for (const w of worktrees) {
+      w.shots = capWalk(`${w.path}/.forge/shots`, 4).length
+      try { w.at = statSync(w.path).mtimeMs } catch { w.at = 0 }
+    }
+    probes['#worktrees'] = { t: Date.now(), v: worktrees }
+    try { writeFileSync('.forge/.env-probe.json', JSON.stringify(probes)) } catch {}
+  }
+} catch {}
+const wtLocked = worktrees.filter(w => w.locked).length
+const wtShots = worktrees.reduce((a, w) => a + (w.shots || 0), 0)
+const wtOldest = worktrees.reduce((a, w) => Math.min(a, w.at || Date.now()), Date.now())
+const wtTitle = worktrees.length
+  ? `Agent worktrees still on disk, none merged away:\n`
+    + worktrees.slice(0, 20).map(w => `${w.path.split('/').pop()} · ${w.branch || 'detached'}`
+      + `${w.locked ? ' · locked' : ''}${w.shots ? ` · ${w.shots} capture(s)` : ''}`).join('\n')
+    + (wtShots ? `\n\n${wtShots} capture(s) sit inside them, outside this board's reach.` : '')
+  : ''
 
 // In play: the current slice's not-yet-verified lines, else newest evidenced.
 let inPlay = (sliceIds[curSlice] || []).map(id => byId[id]).filter(l => l && l.state !== 'verified')
@@ -401,7 +814,11 @@ let inPlayLabel = inPlay.length ? `In play · slice ${curSlice}` : 'Recently pro
 if (!inPlay.length) {
   inPlay = [...evidenced].reverse().map(id => byId[id]).filter(Boolean).slice(0, 8)
 }
-inPlay = inPlay.sort((a, b) => (a.state === 'open' ? 0 : 1) - (b.state === 'open' ? 0 : 1)).slice(0, 8)
+// Failing first: a line the verifier ruled against is the most actionable
+// thing on the board, and burying it under the open ones hides the one item
+// that will not clear itself.
+const playRank = l => l.state === 'failing' ? 0 : l.state === 'open' ? 1 : 2
+inPlay = inPlay.sort((a, b) => playRank(a) - playRank(b)).slice(0, 8)
 
 // Pipeline cursor: the phase number in RESUME's next action first, else the
 // earliest keyword, with .md filenames stripped so PLAN.md is not read as PLAN.
@@ -480,20 +897,11 @@ const phaseFact = i => {
 }
 const hhmmSafe = t => t ? new Date(t).toTimeString().slice(0, 5) : ''
 
-// Latest captures.
-const shots = []
-const walk = (d, depth) => { try {
-  for (const f of readdirSync(d)) {
-    const p = join(d, f)
-    const st = statSync(p)
-    if (st.isDirectory()) { if (depth > 0) walk(p, depth - 1) }
-    else if (/\.(png|jpe?g|webp)$/i.test(f)) shots.push(p)
-  }
-} catch {} }
-walk('tests/screenshots', 1); walk('launch/screenshots', 1); walk('test-results', 3)
-for (const m of evidence.matchAll(/[\w./-]+\.(?:png|jpe?g|webp)/gi)) if (existsSync(m[0])) shots.push(m[0])
-const latest = [...new Set(shots)]
-  .map(p => { try { return { p, t: statSync(p).mtimeMs } } catch { return null } })
+// Latest captures. The index was built once, up with the screenmap; the
+// gallery is the newest sixty of it and carries the same viewport and theme
+// facts, so a figure can say what it proves and at what width.
+const latest = captures
+  .map(c => { try { return { ...c, t: statSync(c.p).mtimeMs } } catch { return null } })
   .filter(Boolean).sort((a, b) => b.t - a.t).slice(0, 60)
 
 // Test runners wipe and rewrite their output directories mid-run, which
@@ -507,6 +915,12 @@ try {
   mkdirSync('.forge/shots', { recursive: true })
   const keep = new Set()
   for (const s of latest) {
+    // Already filed under .forge/shots by the agent that made it. The page
+    // sits in .forge/, so it can reference the file where it lies, still
+    // child-relative, and the copy pile stops growing a second copy of every
+    // capture the run files there. Nothing is copied, so nothing is added to
+    // the ledger, so nothing new becomes prunable.
+    if (s.p.startsWith('.forge/shots/')) { s.copy = s.p.slice('.forge/'.length); continue }
     const name = `${hash(s.p)}-${s.p.split('/').pop()}`
     const dst = join('.forge/shots', name)
     keep.add(name)
@@ -520,32 +934,41 @@ try {
       s.copy = `shots/${name}`
     } catch { s.copy = null }
   }
-  // Prune only what this file wrote, read from a manifest it keeps, never
-  // inferred from the filename.
+  // THE BOARD DELETES NOTHING. Not a capture it found, and no longer a copy it
+  // wrote either.
   //
   // `.forge/shots` is where builders and verifiers write evidence captures,
   // and the sweep used to delete every entry it did not recognise, so a
   // capture filed flat there was destroyed on the next `scripts/evidence.sh`
   // call by the board that exists to display it. This run's captures survived
   // only because they happened to sit in per-slice subdirectories, where
-  // unlinkSync throws EISDIR into an empty catch. Luck, not design.
+  // the delete call throws EISDIR into an empty catch. Luck, not design. A manifest
+  // fixed that half: prune only what this file recorded writing, never what a
+  // filename suggests, because copies are `<hash>-<basename>` and the hash is
+  // 1 to 8 hex characters, which `d5-01-aisle-dark-390.png` matches exactly.
   //
-  // A name test is not enough either: copies are `<hash>-<basename>` and the
-  // hash is 1 to 8 hex characters, which `d5-01-aisle-dark-390.png` matches
-  // exactly. The same ambiguity already bites the screen-token counter above.
-  // A manifest cannot be fooled by a filename, so the manifest is the record.
+  // The manifest is still not enough, and the second half is why the unlink is
+  // gone. Test runners wipe their output directories mid-run: 169 of the 250
+  // capture paths named in one run's EVIDENCE.md no longer existed on disk. For
+  // those, THIS FILE'S COPY IS THE LAST SURVIVING IMAGE, and pruning it because
+  // it aged out of the newest sixty destroys the only proof of a ruling. A
+  // renderer that runs a thousand times a run must not hold a delete at all.
+  // The pile it leaves is bounded by what the run actually produced, and disk
+  // is cheaper than evidence.
+  //
+  // The manifest stays, so a maintainer can still tell a copy from an original.
   const LEDGER = '.forge/shots/.progress-cache.json'
   let wrote = []
   try { wrote = JSON.parse(readFileSync(LEDGER, 'utf8')) } catch {}
-  for (const f of Array.isArray(wrote) ? wrote : []) {
-    if (keep.has(f)) continue
-    try { if (statSync(join('.forge/shots', f)).isFile()) unlinkSync(join('.forge/shots', f)) } catch {}
-  }
+  for (const f of Array.isArray(wrote) ? wrote : []) keep.add(f)
   try { writeFileSync(LEDGER, JSON.stringify([...keep])) } catch {}
 } catch {}
 const gallery = latest.filter(s => s.copy)
 const showable = gallery.slice(0, 6)
-const galleryJson = JSON.stringify(gallery.map(s => ({ s: s.copy, c: s.p }))).replace(/</g, '\\u003c')
+const VP_NAME = { m: 'mobile', t: 'tablet', d: 'desktop' }
+const vpBadge = c => [VP_NAME[c.vp] || '', c.theme].filter(Boolean).join(' ')
+const galleryJson = JSON.stringify(gallery.map(s => ({ s: s.copy, c: s.p, v: s.vp || '', b: vpBadge(s) })))
+  .replace(/</g, '\\u003c')
 
 const stackLine = (plan.match(/^\*{0,2}Stack[:*]*\s*(.+)$/mi) || greenlight.match(/^Stack:\s*(.+)$/mi) || [, ''])[1]
 
@@ -631,7 +1054,12 @@ try {
   if (total > 0) tokensTxt = total >= 1e6 ? `${(total / 1e6).toFixed(1)}M` : `${Math.round(total / 1e3)}k`
 } catch {}
 
-const dotCls = { verified: 'ok', evidence: 'wait', building: 'bld', unrecorded: 'bad', open: 'idle' }
+const dotCls = { verified: 'ok', evidence: 'wait', building: 'bld', unrecorded: 'bad', failing: 'fail', open: 'idle' }
+// A failing line carries its ruling into every place it is drawn, so the row
+// answers "why" without anybody opening a verdict file.
+const lineTitle = l => l.fail
+  ? `FAILED · ${l.fail.src}${l.fail.at ? ` · ${new Date(l.fail.at).toISOString().slice(0, 16).replace('T', ' ')}` : ''}\n${trunc(l.fail.why, 400)}`
+  : ''
 const evTail = evidenceLines.slice(-7).reverse().map(l => {
   const m = l.match(/^(\S+) \| ([^|]+) \| (.*)$/)
   return m ? { t: m[1].slice(11, 16), id: trunc(m[2].trim(), 16), txt: m[3] } : { t: '', id: '', txt: l }
@@ -742,14 +1170,77 @@ const treeHtml = shownRoots.map(x => x.kind === 'wf' ? wfRow(x) : renderNode(x))
 
 // Dispatch pulse: liveness, rhythm, and who did the work. RUNLOG records
 // stops, so "last activity" is the time since any agent last finished.
+// The fourth field is the elapsed seconds since the previous stop, which
+// runlog.sh started recording so the time split stops being a reconstruction.
+// Logs written before it carry three fields and fall back to the estimate.
 const runEntries = runlog.trim() ? runlog.trim().split('\n').map(l => {
-  const m = l.match(/^(\S+) \| (\S+) \|/)
-  return m ? { t: Date.parse(m[1]), a: m[2] } : null
+  const m = l.match(/^(\S+) \| (\S+) \| [^|\n]*(?:\| *(\d+)s)?\s*$/)
+  return m ? { t: Date.parse(m[1]), a: m[2], el: m[3] ? +m[3] * 1000 : null } : null
 }).filter(e => e && !isNaN(e.t)) : []
 const SEATS = ['router', 'scout', 'designer', 'architect', 'builder', 'verifier', 'finisher']
 const typeCounts = {}
 for (const a of treeAgents) typeCounts[a.type] = (typeCounts[a.type] || 0) + 1
 const anonStops = runEntries.filter(e => !SEATS.includes(e.a)).length
+
+// ------------------------------------------------------- where the time goes
+// "The harness spends longer verifying than building" is the question a run
+// asks after a day, and the board could not answer it: RUNLOG records stops
+// and nothing else, so there are no starts, no durations and no phases in it
+// at all. What it does carry is the seat name on the stops the harness
+// bothered to name, and those segment the timeline: the stretch that ENDS in a
+// builder stop was build, the stretch that ends in a verifier stop was verify.
+// Gaps with no stop at all for a quarter of an hour are nobody's, and are
+// dropped rather than charged to whoever happened to finish next.
+//
+// This is a reconstruction, not a measurement, and the panel says so with the
+// coverage beside it. A run whose runlog carries real durations will not need
+// it, and this becomes the fallback for the logs written before it did.
+const IDLE_MS = 15 * 60000
+const PHASE_OF = { builder: 'build', verifier: 'verify', architect: 'other', designer: 'other',
+  scout: 'other', router: 'other', finisher: 'other' }
+const spanTotals = { build: 0, verify: 0, other: 0 }
+const spanToday = { build: 0, verify: 0, other: 0 }
+const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+{
+  // Every stop marks the clock, named or not, because the anonymous helper
+  // stops are what prove the machine was busy. The stretch between two NAMED
+  // stops is charged to the seat that ended it, and the anonymous stops inside
+  // it decide which parts of that stretch were work and which were nobody
+  // there: a gap of more than a quarter of an hour with no stop of any kind is
+  // idle and is charged to no one.
+  //
+  // Charging only named-stop-to-named-stop gaps under the idle cap is the
+  // wrong shape: with 61 seat-named stops among 3,639 the named ones sit hours
+  // apart, every gap trips the cap, and a 41-hour run reports two hours of
+  // work. The pending accumulator is what makes the two scales agree.
+  const all = [...runEntries].sort((a, b) => a.t - b.t)
+  let prev = all.length ? all[0].t : 0
+  let pending = 0
+  for (const e of all) {
+    // A recorded elapsed beats a computed gap: it is what the hook measured,
+    // not what this file inferred from two adjacent timestamps.
+    const gap = e.el != null ? e.el : e.t - prev
+    prev = e.t
+    if (gap > 0 && gap <= IDLE_MS) pending += gap
+    const k = PHASE_OF[e.a]
+    if (!k) continue
+    spanTotals[k] += pending
+    if (e.t >= dayStart.getTime()) spanToday[k] += pending
+    pending = 0
+  }
+}
+const measured = runEntries.filter(e => e.el != null).length
+const spanAll = spanTotals.build + spanTotals.verify + spanTotals.other
+const namedStops = runEntries.filter(e => PHASE_OF[e.a]).length
+const fmtH = ms => ms >= 3600000 ? `${(ms / 3600000).toFixed(1)}h` : `${Math.round(ms / 60000)}m`
+const verifyShare = spanAll ? Math.round(spanTotals.verify / spanAll * 100) : 0
+const todayAll = spanToday.build + spanToday.verify + spanToday.other
+const timeTitle = spanAll
+  ? `${measured === runEntries.length ? 'Measured' : measured ? `Measured for ${measured} stop(s), reconstructed for the rest` : 'Reconstructed'}`
+    + ` from ${namedStops} seat-named stop(s) of ${runEntries.length}: each stretch is charged to the seat that ended it, gaps over 15 minutes dropped.\n`
+    + `whole run · build ${fmtH(spanTotals.build)} · verify ${fmtH(spanTotals.verify)} · other ${fmtH(spanTotals.other)}\n`
+    + (todayAll ? `today · build ${fmtH(spanToday.build)} · verify ${fmtH(spanToday.verify)} · other ${fmtH(spanToday.other)}` : 'today · nothing yet')
+  : ''
 const lastT = runEntries.length ? Math.max(...runEntries.map(e => e.t)) : 0
 const agoMin = lastT ? Math.max(0, Math.round((Date.now() - lastT) / 60000)) : null
 const agoTxt = agoMin === null ? '' : agoMin < 1 ? 'just now'
@@ -814,6 +1305,8 @@ font:400 .68rem/1.4 var(--mono);color:var(--muted)}
 .env--up{color:var(--ink)}
 .env--up .d{background:var(--accent)}
 .env--down .d{background:transparent;border:1px solid var(--negative)}
+.env--dead{opacity:.5;cursor:help}
+.env--dead .d{background:transparent;border:1px dashed var(--muted)}
 .env .el{font-weight:500}
 .env .eu{opacity:.65}
 @media (prefers-reduced-motion:no-preference){.env--up .d{animation:pulse 2.4s ease-in-out infinite}}
@@ -835,11 +1328,28 @@ border-radius:99px;overflow:hidden;display:flex}
    only thing on this board allowed to look like a problem. */
 .m-b{background:repeating-linear-gradient(90deg,var(--line) 0 3px,transparent 3px 6px)}
 .m-u{background:var(--negative)}
+/* Ruled against is a solid negative, unrecorded a hatched one: both are red,
+   and the difference between "the verifier said no" and "nobody wrote it
+   down" is worth a texture. */
+.m-f{background:var(--negative)}
+.m-u{background:repeating-linear-gradient(90deg,var(--negative) 0 3px,transparent 3px 6px)}
+/* Where the hours went. Not a measurement and never drawn as one: the tooltip
+   carries the reconstruction and its coverage. */
+.tsplit{height:.25rem;width:10.5rem;margin-top:.35rem;display:flex;gap:1px;
+border-radius:99px;overflow:hidden;cursor:help}
+.t-b{background:color-mix(in srgb,var(--accent) 70%,transparent)}
+.t-v{background:var(--warn)}
+.t-o{background:var(--line)}
 .chip--warn{color:var(--negative);border-color:color-mix(in srgb,var(--negative) 45%,var(--line))}
 .debt{margin-top:.6rem;padding:.45rem .55rem;border-radius:6px;
 border:1px solid color-mix(in srgb,var(--negative) 40%,var(--line));
 font:500 .68rem/1.5 var(--mono);color:var(--negative)}
+.debt--bad{background:color-mix(in srgb,var(--negative) 12%,transparent);
+border-color:var(--negative);cursor:help}
 .debtwhy{font:400 .64rem/1.45 var(--sans);color:var(--muted);margin-top:.2rem}
+.stale{margin-bottom:.5rem;padding:.3rem .5rem;border-radius:5px;cursor:help;
+border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));
+font:400 .64rem/1.45 var(--mono);color:var(--warn)}
 .graph{display:flex;align-items:stretch;padding:.5rem 0 .2rem}
 .pnode{flex:3;min-width:0;background:var(--surface);border:1px solid var(--line);
 border-radius:10px;padding:.75rem .85rem .65rem;box-shadow:0 2px 8px rgb(0 0 0 / .5)}
@@ -912,6 +1422,13 @@ border-color:color-mix(in srgb,var(--accent) 32%,var(--line))}
 border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .slices .sl-active b{color:var(--accent)}
 .slices .sl-active i{color:var(--ink);opacity:1}
+/* A slice carrying a line the verifier ruled against wears the count in red,
+   whatever else it is. Done and failing are not exclusive: a slice can be
+   fully built, mostly verified, and still owe one refused line. */
+.slices .sl-fail{border-color:var(--negative)}
+.slices .chip u{font:500 .6rem/1.4 var(--mono);text-decoration:none;flex:none;
+color:var(--negative);padding:0 .25rem;border-radius:3px;
+background:color-mix(in srgb,var(--negative) 18%,transparent)}
 main{display:grid;grid-template-columns:1.05fr 1.45fr .72fr;
 grid-template-rows:1.3fr .8fr;gap:.8rem;min-height:0}
 .panel.rub{grid-column:1;grid-row:1/3}
@@ -922,23 +1439,53 @@ grid-template-rows:1.3fr .8fr;gap:.8rem;min-height:0}
    screens to draw. Without it the board keeps its three-column shape. */
 main.smx{grid-template-columns:1fr 1.4fr .7fr .78fr}
 main.smx .panel.scr{grid-column:4;grid-row:1/3}
-.smap{display:flex;flex-direction:column;gap:.32rem;overflow:hidden;min-height:0;flex:1}
-.srow{display:flex;flex-direction:column;gap:.08rem}
+.smap{display:flex;flex-direction:column;gap:.1rem;overflow-y:auto;min-height:0;flex:1}
+/* A sitemap is a tree, so the rows are indented by depth. --d is the segment
+   depth, set per row: /account/reset/confirm sits two steps in from /account
+   and reads as belonging to it without a single box-drawing character.
+   ONE LINE PER NODE. Two lines fitted seven designer screens and hid two
+   thirds of twenty-six routes, and half a sitemap answers none of the
+   questions a whole one does. */
+.srow{display:flex;align-items:center;gap:.35rem;min-width:0;
+padding:.09rem .1rem .09rem calc(var(--d,0) * .55rem + .1rem);position:relative}
+.srow[style*="--d:1"],.srow[style*="--d:2"],.srow[style*="--d:3"],.srow[style*="--d:4"]{
+border-left:1px solid var(--line);margin-left:.25rem}
 .sh{display:flex;align-items:center;gap:.4rem;min-width:0}
 .sdot{width:.5rem;height:.5rem;border-radius:50%;flex:none;
 border:1px solid var(--line);background:transparent}
 .s-cap .sdot{background:var(--accent);border-color:var(--accent)}
 .srow.s-cap{background:color-mix(in srgb,var(--accent) 9%,transparent);
-border-radius:5px;margin:0 -.3rem;padding:.1rem .3rem}
+border-radius:5px;padding-top:.1rem;padding-bottom:.1rem}
 .s-bld .sdot{border-color:var(--warn)}
+/* A path segment with no page of its own is scaffolding, not a screen. */
+.s-stub{opacity:.55}
+.s-stub .sdot{border-style:dashed}
 .sn{font:500 .62rem/1.4 var(--mono);color:var(--muted);flex:none}
-.snm{font-size:.72rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.snm{font:400 .7rem/1.4 var(--mono);color:var(--ink);white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis;flex:none;max-width:8rem}
+.sal{font-size:.66rem;color:var(--muted);white-space:nowrap;overflow:hidden;
+text-overflow:ellipsis;flex:1;min-width:0}
+.srow>.cov{margin-left:auto}
+.srow>.snb{margin-left:.15rem}
+.dlink{font-size:.62rem;color:var(--muted);text-decoration:none;flex:none;
+padding:0 .15rem;border-radius:3px}
+.dlink:hover{color:var(--accent);background:var(--raised)}
+.phead .dlink{margin-left:auto;margin-right:.5rem;font-family:var(--mono)}
 .s-pln .snm{opacity:.5}
+.sgrp{margin-top:.45rem;padding-top:.35rem;border-top:1px solid var(--line);
+font:500 .6rem/1.3 var(--mono);letter-spacing:.04em;color:var(--muted)}
 .sm{display:flex;align-items:center;gap:.4rem;padding-left:.9rem;min-width:0}
+/* Four cells, mobile light and dark then desktop light and dark. A screen
+   proved on a laptop only is half filled, and says so without a legend. */
+.cov{display:flex;gap:2px;flex:none}
+.cov i{width:.32rem;height:.32rem;border-radius:1px;display:block;
+border:1px solid var(--line);background:transparent}
+.cov i.on{background:var(--accent);border-color:var(--accent)}
 .srt{font:400 .61rem/1.4 var(--mono);color:var(--muted);white-space:nowrap;
 overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .srt.gone{color:var(--warn)}
-.ssl{font:400 .6rem/1.4 var(--mono);color:var(--muted);opacity:.75;flex:none}
+.ssl{font:400 .6rem/1.4 var(--mono);color:var(--muted);opacity:.75;flex:1;
+min-width:0;overflow:hidden}
 .sbar{width:2.4rem;height:3px;border-radius:2px;background:var(--line);flex:none;overflow:hidden}
 .sbar i{display:block;height:100%;background:var(--accent)}
 .snb{font:400 .61rem/1.4 var(--mono);color:var(--muted);width:2.5ch;text-align:right;flex:none}
@@ -949,7 +1496,7 @@ font-size:.61rem;line-height:1.45;color:var(--muted)}
 padding:.8rem .9rem;overflow:hidden;min-height:0;display:flex;flex-direction:column;
 box-shadow:0 2px 8px rgb(0 0 0 / .5)}
 .panel .lbl{margin-bottom:.55rem}
-.rgrid{display:grid;grid-template-columns:max-content 1fr 2.6ch 2.6ch 2.6ch 2.9ch;
+.rgrid{display:grid;grid-template-columns:max-content 1fr 2.6ch 2.6ch 2.6ch 2.6ch 2.9ch;
 gap:.3rem .55rem;align-items:center;font-size:.72rem}
 .rgrid .h{font:500 .6rem/1.2 var(--mono);color:var(--muted);text-align:right}
 .rgrid .nm{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:9em}
@@ -963,6 +1510,8 @@ text-align:right;color:var(--muted)}
 .dotln.idle{background:transparent;border:1px solid var(--line)}
 .dotln.bld{background:transparent;border:1px dashed var(--muted)}
 .dotln.bad{background:var(--negative)}
+.dotln.fail{background:var(--negative);box-shadow:0 0 0 2px color-mix(in srgb,var(--negative) 30%,transparent)}
+.rgrid .n.bad{color:var(--negative)}
 .play{margin-top:.7rem;padding-top:.55rem;border-top:1px solid var(--line);
 overflow:hidden;min-height:0;flex:1}
 .play .row{display:flex;gap:.5rem;padding:.22rem 0;align-items:flex-start}
@@ -1018,6 +1567,10 @@ position:relative;min-height:0;cursor:pointer;background:var(--raised)}
 font:400 .58rem/1.4 var(--mono);padding:.15rem .35rem;
 background:rgb(11 11 11 / .78);color:var(--muted);
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* What width and theme this capture proves, taken from its own filename. */
+.vpb{position:absolute;top:.25rem;right:.25rem;border-radius:4px;
+font:500 .55rem/1.4 var(--mono);padding:.05rem .3rem;
+background:rgb(11 11 11 / .8);color:var(--muted)}
 .empty{color:var(--muted);font-size:.72rem;margin:auto;text-align:center;padding:1rem}
 footer{border-top:1px solid var(--line);padding-top:.45rem;display:flex;gap:2rem;
 font:400 .62rem/1.4 var(--mono);color:var(--muted);white-space:nowrap}
@@ -1069,6 +1622,10 @@ align-items:flex-start}
 .rb .row:last-child{border-bottom:none}
 .rb .id{font:500 .64rem/1.6 var(--mono);color:var(--muted);flex:none;min-width:2.8ch}
 .rb .tx{font-size:.73rem;line-height:1.5;color:var(--ink);opacity:.9}
+/* The ruling, beside the line it ruled on. A rubric that shows only what is
+   left tells you nothing about what was refused and why. */
+.rb .why{flex:none;max-width:22rem;font:400 .66rem/1.45 var(--mono);
+color:var(--negative);opacity:.85}
 .lb{position:fixed;inset:0;display:none;background:rgb(0 0 0 / .6);z-index:9;
 align-items:center;justify-content:center;gap:1rem;padding:1.5rem;cursor:pointer}
 .lb.open{display:flex}
@@ -1107,18 +1664,22 @@ h1{white-space:normal}
       : armed ? '<span class="chip chip--ok"><span class="d"></span>gate active</span>'
       : '<span class="chip">pre-greenlight</span>'}
     ${!concluded && shipped && !verifiedAll ? '<span class="chip">report written · verify pending</span>' : ''}
-    ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''} · ${nOpen} open</span>${unrecorded.length ? `<span class="chip chip--warn" title="Built in an earlier slice and never recorded in EVIDENCE.md">${unrecorded.length} unrecorded</span>` : ''}` : ''}
+    ${allLines.length ? `<span class="chip">${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''} · ${nOpen} open</span>${nFailing ? `<span class="chip chip--bad" title="${esc(failingLines.map(l => `${l.id} · ${trunc(l.fail.why, 120)}`).join('\n'))}"><span class="d"></span>${nFailing} failing</span>` : ''}${unrecorded.length ? `<span class="chip chip--warn" title="Built in an earlier slice and never recorded in EVIDENCE.md">${unrecorded.length} unrecorded</span>` : ''}` : ''}
+    ${worktrees.length ? `<span class="chip ${Date.now() - wtOldest > 864e5 ? 'chip--warn' : ''}" title="${esc(wtTitle)}">${worktrees.length} worktree${worktrees.length > 1 ? 's' : ''}${wtLocked ? ` · ${wtLocked} locked` : ''}</span>` : ''}
     ${stackLine ? `<span class="chip">${esc(trunc(stackLine, 58))}</span>` : ''}
     </div>
-    ${envs.length ? `<div class="envs">
+    ${envs.length || deadLocal.length ? `<div class="envs">
     ${envs.map(e => `<a class="env ${e.up ? 'env--up' : 'env--down'}" href="${esc(e.href)}" target="_blank" rel="noreferrer" title="${esc(e.href)} · ${esc(e.note)}"><span class="d"></span><span class="el">${esc(e.label)}</span><span class="eu">${esc(e.shown)}</span></a>`).join('\n    ')}
+    ${deadLocal.length ? `<span class="env env--dead" title="${esc(deadTitle)}"><span class="d"></span><span class="el">${deadLocal.length} dead port${deadLocal.length > 1 ? 's' : ''}</span></span>` : ''}
     </div>` : ''}
   </div>
   <div class="pct">
     <div class="n">${pct}%</div>
     <div class="cap">complete, estimated</div>
     ${durationTxt || tokensTxt ? `<div class="cap">${[durationTxt ? `running ${durationTxt}` : '', tokensTxt ? `${tokensTxt} tokens` : ''].filter(Boolean).join(' · ')}</div>` : ''}
-    ${allLines.length ? `<div class="meter"><span class="m-v" style="width:${(nVerified / allLines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(nEvidence / allLines.length * 100).toFixed(1)}%"></span><span class="m-u" style="width:${(unrecorded.length / allLines.length * 100).toFixed(1)}%"></span><span class="m-b" style="width:${(nBuilding / allLines.length * 100).toFixed(1)}%"></span></div>` : ''}
+    ${allLines.length ? `<div class="meter"><span class="m-v" style="width:${(nVerified / allLines.length * 100).toFixed(1)}%"></span><span class="m-e" style="width:${(nEvidence / allLines.length * 100).toFixed(1)}%"></span><span class="m-f" style="width:${(nFailing / allLines.length * 100).toFixed(1)}%"></span><span class="m-u" style="width:${(unrecorded.length / allLines.length * 100).toFixed(1)}%"></span><span class="m-b" style="width:${(nBuilding / allLines.length * 100).toFixed(1)}%"></span></div>` : ''}
+    ${spanAll ? `<div class="tsplit" title="${esc(timeTitle)}"><span class="t-b" style="width:${(spanTotals.build / spanAll * 100).toFixed(1)}%"></span><span class="t-v" style="width:${(spanTotals.verify / spanAll * 100).toFixed(1)}%"></span><span class="t-o" style="width:${(spanTotals.other / spanAll * 100).toFixed(1)}%"></span></div>
+    <div class="cap" title="${esc(timeTitle)}">${verifyShare}% verifying${todayAll ? ` · ${Math.round(spanToday.verify / todayAll * 100)}% today` : ''}</div>` : ''}
   </div>
 </header>
 
@@ -1139,41 +1700,48 @@ h1{white-space:normal}
     const pr = sliceProgress[s.n]
     const done = pr ? pr.done === pr.all : (s.n < curSlice || (s.n === curSlice && shipped))
     const cls = done ? 'sl-done' : s.n === curSlice ? 'sl-active' : ''
-    return `<span class="chip ${cls}" title="slice ${s.n} · ${esc(s.title)}${pr ? ` · ${pr.done} of ${pr.all} verified` : ''}"><b>${s.n}</b>${esc(trunc(s.title, 44))}${pr ? `<i>${pr.done}/${pr.all}</i>` : ''}</span>`
+    const bad = failBySlice[s.n] || []
+    return `<span class="chip ${cls}${bad.length ? ' sl-fail' : ''}" title="slice ${s.n} · ${esc(s.title)}${pr ? ` · ${pr.done} of ${pr.all} verified` : ''}${bad.length ? `\n\nFAILING:\n${esc(bad.map(l => `${l.id} · ${trunc(l.fail.why, 110)}`).join('\n'))}` : ''}"><b>${s.n}</b>${esc(trunc(s.title, 44))}${bad.length ? `<u>${bad.length}</u>` : ''}${pr ? `<i>${pr.done}/${pr.all}</i>` : ''}</span>`
   }).join('\n  ')}
   </div>` : ''}
 </section>
 
-<main class="${screenMap.length ? 'smx' : ''}">
+<main class="${screenMap.length || sitemap.length ? 'smx' : ''}">
   <div class="panel rub">
     <div class="phead"><span class="lbl">Rubric</span>${allLines.length ? `<button class="btn-all">all ${allLines.length} lines</button>` : ''}</div>
     ${allLines.length ? `<div class="rgrid">
-    <span></span><span></span><span class="h" title="verified by the verifier">ok</span><span class="h" title="evidence recorded, awaiting the verifier">ev</span><span class="h" title="in the slice being built now">wip</span><span class="h">all</span>
+    <span></span><span></span><span class="h" title="verified by the verifier">ok</span><span class="h" title="evidence recorded, awaiting the verifier">ev</span><span class="h" title="ruled against and still unchecked">no</span><span class="h" title="in the slice being built now">wip</span><span class="h">all</span>
     ${sections.filter(s => s.lines.length).map(s => {
       const v = s.lines.filter(l => l.state === 'verified').length
       const e = s.lines.filter(l => l.state === 'evidence').length
       const b = s.lines.filter(l => l.state === 'building').length
       const u = s.lines.filter(l => l.state === 'unrecorded').length
+      const f = s.lines.filter(l => l.state === 'failing').length
       const pc = k => (k / s.lines.length * 100).toFixed(1)
       // A section whose every line is verified is finished, and should say so
       // in the same green the rest of the board now uses for completion.
       const full = v === s.lines.length
-      return `<span class="nm${full ? ' full' : ''}">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${pc(v)}%"></span><span class="m-e" style="width:${pc(e)}%"></span><span class="m-u" style="width:${pc(u)}%"></span><span class="m-b" style="width:${pc(b)}%"></span></div><span class="n${v ? ' on' : ''}">${v}</span><span class="n${e ? ' on' : ''}">${e}</span><span class="n${b ? ' on' : ''}">${b}</span><span class="n">${s.lines.length}</span>`
+      return `<span class="nm${full ? ' full' : ''}">${esc(s.name)}</span><div class="meter"><span class="m-v" style="width:${pc(v)}%"></span><span class="m-e" style="width:${pc(e)}%"></span><span class="m-f" style="width:${pc(f)}%"></span><span class="m-u" style="width:${pc(u)}%"></span><span class="m-b" style="width:${pc(b)}%"></span></div><span class="n${v ? ' on' : ''}">${v}</span><span class="n${e ? ' on' : ''}">${e}</span><span class="n${f ? ' bad' : ''}">${f}</span><span class="n${b ? ' on' : ''}">${b}</span><span class="n">${s.lines.length}</span>`
     }).join('\n    ')}
     </div>
+    ${nFailing ? `<div class="debt debt--bad">${Object.entries(failBySlice).sort((a, b) => b[0] - a[0])
+      .map(([n, ls]) => `<div title="${esc(ls.map(l => `${l.id} · ${trunc(l.fail.why, 140)}`).join('\n'))}">${ls.length} line(s) ruled against in slice ${n === 'undefined' ? '?' : n}: ${esc(ls.map(l => l.id).join(' '))}</div>`).join('')}
+    <div class="debtwhy">${esc(trunc((failingLines[0].fail.why || ''), 150))}</div>
+    </div>` : ''}
     ${unrecorded.length ? `<div class="debt">${Object.entries(debtBySlice).sort((a, b) => b[0] - a[0])
       .map(([n, ls]) => `<div>${ls.length} line(s) built in slice ${n}, 0 recorded</div>`).join('')}
     <div class="debtwhy">Nothing reaches the verifier until it is in EVIDENCE.md.</div>
     </div>` : ''}
     ${inPlay.length ? `<div class="play">
     <div class="lbl">${esc(inPlayLabel)}</div>
-    ${inPlay.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(trunc(l.text, 150))}</span></div>`).join('\n    ')}
+    ${inPlay.map(l => `<div class="row" title="${esc(lineTitle(l))}"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(trunc(l.text, 150))}</span></div>`).join('\n    ')}
     </div>` : ''}`
     : '<p class="empty">The rubric arrives with the plan. Nothing is measured before it exists.</p>'}
   </div>
 
   <div class="panel act">
     <div class="lbl">Activity</div>
+    ${resumeStale ? `<div class="stale" title="The rubric and the Stop gate read the same checkboxes; RESUME is prose somebody wrote once.">${esc(resumeStale)}</div>` : ''}
     ${resumeTop.length ? `<div class="kv">
     ${resumeTop.map(([k, v]) => `<span class="k">${esc(k.toLowerCase())}</span><span class="v">${esc(trunc(v, 170))}</span>`).join('\n    ')}
     </div>` : ''}
@@ -1186,7 +1754,7 @@ h1{white-space:normal}
   <div class="panel cap">
     <div class="lbl">Latest captures${gallery.length > showable.length ? ` · ${showable.length} of ${gallery.length}, all in the popin` : ''}</div>
     ${showable.length ? `<div class="shots">
-    ${showable.map((s, i) => `<figure data-i="${i}"><img src="${esc(s.copy)}" alt="${esc(s.p)}" loading="lazy"><figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
+    ${showable.map((s, i) => `<figure data-i="${i}"><img src="${esc(s.copy)}" alt="${esc(s.p)}" loading="lazy">${s.vp ? `<span class="vpb">${esc(vpBadge(s))}</span>` : ''}<figcaption>${esc(s.p.split('/').pop())}</figcaption></figure>`).join('\n    ')}
     </div>` : '<p class="empty">Captures appear as the build starts producing screenshots.</p>'}
   </div>
 
@@ -1200,16 +1768,27 @@ h1{white-space:normal}
     ${seatChips}
     </div>` : '<p class="empty">Agent dispatches appear once the run starts delegating.</p>'}
   </div>
-${screenMap.length ? `
+${screenMap.length || sitemap.length ? `
   <div class="panel scr">
-    <div class="phead"><span class="lbl">Screens</span><span class="snb" style="width:auto">${screensSeen} of ${screenMap.length}</span></div>
+    <div class="phead"><span class="lbl">Sitemap</span>${designIndex ? `<a class="dlink" href="${esc(designIndex)}" target="_blank" rel="noreferrer" title="Open the design in Claude Design">design &#8599;</a>` : ''}<span class="snb" style="width:auto">${screensSeen} of ${screenMap.length}</span></div>
     <div class="smap">
-    ${screenMap.map(s => `<div class="srow s-${s.state}" title="${esc(s.name)}${s.slice ? ` · slice ${s.slice}` : ''}${s.route ? ` · ${esc(s.route)}` : ''} · ${s.shots} capture(s)">
-      <div class="sh"><span class="sdot"></span><span class="sn">${String(s.n).padStart(2, '0')}</span><span class="snm">${esc(s.name)}</span></div>
-      <div class="sm"><span class="srt${s.gone ? ' gone' : ''}">${esc(s.route || (s.slice ? 'not routed' : ''))}</span><span class="ssl">${s.slice ? `s${s.slice}` : ''}</span><span class="sbar"><i style="width:${(s.shots / shotMax * 100).toFixed(0)}%"></i></span><span class="snb">${s.shots || ''}</span></div>
-    </div>`).join('\n    ')}
+    ${sitemap.map(n => {
+      const s = n.screen
+      const st = s ? s.state : n.shots ? 'cap' : 'pln'
+      const title = `${n.path}${s ? ` · ${s.name}` : n.real ? '' : ' · path segment, no page of its own'}`
+        + `${s && s.slice ? ` · slice ${s.slice}` : ''} · ${n.shots} capture(s)\n`
+        + COVER_LABEL.map((l, i) => `${n.cover[i] ? '▪' : '▫'} ${l}`).join('   ')
+      return `<div class="srow s-${st}${n.real ? '' : ' s-stub'}" style="--d:${n.depth}" title="${esc(title)}">
+      <span class="sdot"></span><span class="sn">${s ? String(s.n).padStart(2, '0') : ''}</span><span class="snm">${esc(n.depth ? n.seg : '/')}</span>${s ? `<span class="sal">${esc(trunc(s.name, 20))}</span>` : ''}${s && s.href ? `<a class="dlink" href="${esc(s.href)}" target="_blank" rel="noreferrer" title="${esc(s.name)} in Claude Design">&#8599;</a>` : ''}<span class="cov">${n.cover.map((on, i) => `<i class="${on ? 'on' : ''}" title="${COVER_LABEL[i]}"></i>`).join('')}</span><span class="snb">${n.shots || ''}</span>
+    </div>`
+    }).join('\n    ')}
+    ${unrouted.length ? `<div class="sgrp">designed, not routed</div>
+    ${unrouted.map(s => `<div class="srow s-${s.state}" style="--d:0" title="${esc(s.name)}${s.slice ? ` · slice ${s.slice}` : ''} · ${s.shots} capture(s) · no route on disk carries this screen's name
+${COVER_LABEL.map((l, i) => `${s.cover[i] ? '▪' : '▫'} ${l}`).join('   ')}">
+      <span class="sdot"></span><span class="sn">${String(s.n).padStart(2, '0')}</span><span class="snm">${esc(trunc(s.name, 18))}</span>${s.href ? `<a class="dlink" href="${esc(s.href)}" target="_blank" rel="noreferrer" title="${esc(s.name)} in Claude Design">&#8599;</a>` : ''}<span class="cov">${s.cover.map((on, i) => `<i class="${on ? 'on' : ''}" title="${COVER_LABEL[i]}"></i>`).join('')}</span><span class="snb">${s.shots || ''}</span>
+    </div>`).join('\n    ')}` : ''}
     </div>
-    <div class="sfoot">${unclassified ? `<span class="swarn">${unclassified} capture(s) carry no screen number, so none is counted here. Name them &lt;screen&gt;-… , for example 02-catalogue-390.png.</span><br>` : ''}${routesInTree.length ? `${routesInTree.length} route(s) in the tree, ${tied.size} tied to a screen${untied.length ? ` · untied: ${esc(trunc(untied.join(' '), 46))}` : ''}` : 'No router convention recognised in this tree.'}</div>
+    <div class="sfoot">${routesInTree.length ? `${routesInTree.length} route(s) on disk, ${tied.size} carrying a designed screen` : 'No router convention recognised in this tree.'}${unclassified ? ` · ${unclassified} of ${captures.length} capture(s) prove no single screen` : ''}${evidenceGone ? `<br><span class="swarn">${evidenceGone} of ${evidenceNamed} capture(s) named in EVIDENCE.md are no longer on disk.</span>` : ''}</div>
   </div>` : ''}
 </main>
 
@@ -1220,19 +1799,19 @@ ${screenMap.length ? `
 
 ${allLines.length ? `<div class="rb">
   <div class="box">
-    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence${nBuilding ? ` · ${nBuilding} in build` : ''}${unrecorded.length ? ` · ${unrecorded.length} unrecorded` : ''} · ${nOpen} open of ${allLines.length}</span><span class="lg"><span class="dotln ok"></span>verified<span class="dotln wait"></span>evidence<span class="dotln bld"></span>in build${unrecorded.length ? '<span class="dotln bad"></span>built, never recorded' : ''}<span class="dotln idle"></span>open</span>${linesBySlice.length ? `<span class="grp"><button data-g="slice" class="on">by slice</button><button data-g="sec">by section</button></span>` : ''}</div>
+    <div class="bh"><span class="ti">Rubric · ${nVerified} verified · ${nEvidence} evidence${nFailing ? ` · ${nFailing} failing` : ''}${nBuilding ? ` · ${nBuilding} in build` : ''}${unrecorded.length ? ` · ${unrecorded.length} unrecorded` : ''} · ${nOpen} open of ${allLines.length}</span><span class="lg"><span class="dotln ok"></span>verified<span class="dotln wait"></span>evidence${nFailing ? '<span class="dotln fail"></span>ruled against' : ''}<span class="dotln bld"></span>in build${unrecorded.length ? '<span class="dotln bad"></span>built, never recorded' : ''}<span class="dotln idle"></span>open</span>${linesBySlice.length ? `<span class="grp"><button data-g="slice" class="on">by slice</button><button data-g="sec">by section</button></span>` : ''}</div>
     ${linesBySlice.length ? `<div class="bb bb-slice">
     ${linesBySlice.map(g => {
       const pr = sliceProgress[g.n]
       return `<div class="sec"><span>slice ${g.n} · ${esc(g.title)}</span>${pr ? `<b class="${pr.done === pr.all ? 'full' : ''}">${pr.done}/${pr.all}</b>` : ''}</div>
-    ${g.lines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}`
+    ${g.lines.map(l => `<div class="row" title="${esc(lineTitle(l))}"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span>${l.fail ? `<span class="why">${esc(trunc(l.fail.why, 180))}</span>` : ''}</div>`).join('\n    ')}`
     }).join('\n    ')}
     ${unclaimedLines.length ? `<div class="sec"><span>closed by no slice</span><b>${unclaimedLines.length}</b></div>
-    ${unclaimedLines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}` : ''}
+    ${unclaimedLines.map(l => `<div class="row" title="${esc(lineTitle(l))}"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span>${l.fail ? `<span class="why">${esc(trunc(l.fail.why, 180))}</span>` : ''}</div>`).join('\n    ')}` : ''}
     </div>` : ''}
     <div class="bb bb-sec">
     ${sections.filter(s => s.lines.length).map(s => `<div class="sec"><span>${esc(s.name)}</span></div>
-    ${s.lines.map(l => `<div class="row"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span></div>`).join('\n    ')}`).join('\n    ')}
+    ${s.lines.map(l => `<div class="row" title="${esc(lineTitle(l))}"><span class="dotln ${dotCls[l.state]}"></span><span class="id">${esc(l.id)}</span><span class="tx">${esc(l.text)}</span>${l.fail ? `<span class="why">${esc(trunc(l.fail.why, 180))}</span>` : ''}</div>`).join('\n    ')}`).join('\n    ')}
     </div>
   </div>
 </div>` : ''}
@@ -1247,12 +1826,25 @@ var lb=document.querySelector('.lb')
 document.querySelectorAll('.marq').forEach(function(m){
   if(m.scrollWidth/2<=m.parentElement.clientWidth)m.classList.add('still')
 })
+// vf narrows the walk to one viewport, so a reviewer can step through every
+// mobile capture without the desktop ones in between. m, d, a to switch.
+var vf=''
+function pool(){return vf?G.filter(function(x){return x.v===vf}):G}
 function show(i){
   if(!G.length)return
   gi=((i%G.length)+G.length)%G.length
+  var P=pool(),at=P.indexOf(G[gi])
   lb.querySelector('img').src=G[gi].s
-  lb.querySelector('figcaption').textContent=(gi+1)+' / '+G.length+' · '+G[gi].c
+  lb.querySelector('figcaption').textContent=(at<0?gi+1:at+1)+' / '+(at<0?G.length:P.length)
+    +(vf?' · '+(vf==='m'?'mobile':'desktop')+' only':'')
+    +(G[gi].b?' · '+G[gi].b:'')+' · '+G[gi].c
   lb.classList.add('open')
+}
+function step(d){
+  var P=pool()
+  if(!P.length){show(gi+d);return}
+  var at=P.indexOf(G[gi])
+  show(G.indexOf(at<0?P[d>0?0:P.length-1]:P[(at+d+P.length)%P.length]))
 }
 var rb=document.querySelector('.rb')
 setInterval(function(){if(!document.querySelector('.lb.open,.rb.open'))location.reload()},15000)
@@ -1267,8 +1859,8 @@ document.addEventListener('click',function(e){
     return}
   var f=e.target.closest('.shots figure')
   if(f){show(+f.dataset.i);return}
-  if(e.target.closest('.lb .prev')){show(gi-1);return}
-  if(e.target.closest('.lb .next')){show(gi+1);return}
+  if(e.target.closest('.lb .prev')){step(-1);return}
+  if(e.target.closest('.lb .next')){step(1);return}
   if(e.target.closest('.lb figure'))return
   lb.classList.remove('open')
 })
@@ -1278,8 +1870,10 @@ document.addEventListener('keydown',function(e){
     return}
   if(!lb.classList.contains('open'))return
   if(e.key==='Escape')lb.classList.remove('open')
-  else if(e.key==='ArrowLeft')show(gi-1)
-  else if(e.key==='ArrowRight')show(gi+1)
+  else if(e.key==='ArrowLeft')step(-1)
+  else if(e.key==='ArrowRight')step(1)
+  else if(e.key==='m'||e.key==='d'){vf=vf===e.key?'':e.key;show(gi)}
+  else if(e.key==='a'){vf='';show(gi)}
 })
 </script>
 </body></html>

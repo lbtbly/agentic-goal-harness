@@ -5,3 +5,4 @@
 {"ts":"2026-09-10T16:50:22Z","sid":"optimization-2026-09","kind":"subagent_fail","key":""}
 {"ts":"2026-09-10T16:51:19Z","sid":"optimization-2026-09","kind":"subagent_fail","key":"general-purpose"}
 {"ts":"2026-09-10T16:51:21Z","sid":"optimization-2026-09","kind":"user_correction","key":"contradiction","length":"long"}
+{"ts":"2026-09-10T19:05:20Z","sid":"optimization-2026-09","kind":"user_correction","key":"redirect","length":"medium"}

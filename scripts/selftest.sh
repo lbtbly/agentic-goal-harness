@@ -293,6 +293,20 @@ assert d.get("env",{}).get("FORGE_CHECKS_DEBOUNCE"), "no FORGE_CHECKS_DEBOUNCE"
 assert d.get("subagentPromptCacheTtl"), "no subagentPromptCacheTtl"
 PY
 
+# Vendored copies were never synced to begin with: four of five scripts differed
+# between two real targets, commit.sh and defect.sh never arrived, and one ran a
+# 601-byte dod-gate.sh against the harness's 3,947. The drift check is only
+# worth having if it refuses to say clean while anything differs.
+bash "$S/manifest-test.sh" >/dev/null 2>&1 \
+  && ok "the drift loop converges and never reports a half-upgrade clean" \
+  || fail "manifest-test.sh failed; drift can go silent"
+grep -q 'manifest.mjs' "$S/rehydrate.sh" \
+  && ok "a session start says which harness the run is executing" \
+  || fail "a run can execute a stale vendored harness with no signal"
+[ -f "$ROOT/MANIFEST.json" ] \
+  && ok "the harness records its own file hashes" \
+  || fail "no MANIFEST.json, so no target can be compared to anything"
+
 # README carries counts, and counts break on every pipeline change. Before this
 # was enforced it listed six skills where seven existed and told the operator to
 # fill three slots that were already written. Prose discipline is what failed,

@@ -20,6 +20,23 @@ if [ -f .forge/PREFLIGHT.md ] && [ -x "$HERE/preflight.sh" ]; then
   echo "--- PRE-FLIGHT ---"
   "$HERE/preflight.sh" 2>/dev/null | tail -n +2
 fi
+# Which harness is this run actually executing? Every script is a per-project
+# copy, and copies were never synced: across two real targets, four of five
+# differed from each other, commit.sh and defect.sh never arrived at all, and
+# one ran a 601-byte dod-gate.sh where the harness has 3,947. That run is
+# recorded as having folded under pressure. It had no gate.
+#
+# Cheap because it is a hash compare against a recorded baseline, and silent
+# when everything matches, so it costs nothing on a healthy run.
+if [ -f .forge/MANIFEST.json ] && command -v node >/dev/null 2>&1 && [ -f "$HERE/manifest.mjs" ]; then
+  DRIFT=$(node "$HERE/manifest.mjs" check . 2>/dev/null | grep -E '^  (stale|edited|absent) ' | head -8)
+  if [ -n "$DRIFT" ]; then
+    echo "--- HARNESS DRIFT ---"
+    printf '%s\n' "$DRIFT"
+    echo "This run executes the files above, not the harness's. Sync before trusting a result."
+  fi
+fi
+
 # Arming reminder. ARMED marks approval, not arming: /goal is session-scoped
 # and dies with the session, so an armed run resumed fresh has no condition.
 if [ -f .forge/PLAN.md ]; then

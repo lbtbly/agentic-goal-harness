@@ -257,9 +257,51 @@ grep -q '^[0-9-]*T[0-9:]*Z | F19 | blocks | rows visible to the wrong identity$'
 ARL="$AUD/runlog"; mkdir -p "$ARL/.forge"
 printf '{"agent_type":"builder"}' | ( cd "$ARL" && CLAUDE_PROJECT_DIR="$ARL" bash "$S/runlog.sh" >/dev/null 2>&1 )
 printf '{"agent_type":"verifier"}' | ( cd "$ARL" && CLAUDE_PROJECT_DIR="$ARL" bash "$S/runlog.sh" >/dev/null 2>&1 )
-grep -qE '^[0-9-]+T[0-9:]+Z \| verifier \| stopped \| [0-9]+s$' "$ARL/.forge/RUNLOG.md" \
-  && ok "runlog records the seat and the elapsed time" \
+grep -qE '^[0-9-]+T[0-9:]+Z \| verifier \| stopped \| [0-9]+s \| dispatch$' "$ARL/.forge/RUNLOG.md" \
+  && ok "runlog records the seat, the elapsed time, and the dispatch mark" \
   || fail "runlog still records a bare stop"
+
+# SubagentStop is NOT the dispatch boundary: the vitrine build fired it 9,324
+# times against 185 real dispatches. A stop that names no seat still gets its
+# line and still gets the throttled checkpoint, because a builder runs for hours
+# and those unnamed fires are the only heartbeat inside it. What it must NOT get
+# is the unthrottled check, which is 2.7 seconds a fire and about seven hours
+# per M or L run.
+AUN="$AUD/runlog-unnamed"; mkdir -p "$AUN/.forge"
+printf '{"agent_id":"a1b2c3d4e5f6a7b8"}' | ( cd "$AUN" && CLAUDE_PROJECT_DIR="$AUN" bash "$S/runlog.sh" >/dev/null 2>&1 )
+grep -qE '^[0-9-]+T[0-9:]+Z \| a1b2c3d4e5f6a7b8 \| stopped \| [0-9]+s$' "$AUN/.forge/RUNLOG.md" \
+  && ok "an unnamed stop is logged without the dispatch mark" \
+  || fail "an unnamed stop is logged wrongly"
+grep -q 'dispatch' "$AUN/.forge/RUNLOG.md" \
+  && fail "an unnamed stop was treated as a dispatch boundary" \
+  || ok "an unnamed stop does not trigger the per-dispatch gate"
+
+# Every record is one atomic append. Run two's RUNLOG carried 45 lines with
+# verdict prose spliced mid-record because concurrent stops each wrote twice.
+LINES=$(wc -l < "$ARL/.forge/RUNLOG.md" | tr -d ' ')
+[ "$LINES" = 2 ] \
+  && ok "each stop appends exactly one whole line" \
+  || fail "runlog wrote $LINES lines for two stops"
+
+# The env block is where the debounce lives, and its absence was the finding:
+# settings.json carried only permissions and hooks, so FORGE_CHECKS_DEBOUNCE had
+# nowhere to be set and ran at 20 seconds for every one of 1,524 edits.
+python3 - "$ROOT/.claude/settings.json" <<'PY' && ok "settings.json carries the env block and the subagent cache ttl" || fail "settings.json is missing the env block or the cache ttl"
+import json,sys
+d=json.load(open(sys.argv[1]))
+assert d.get("env",{}).get("FORGE_CHECKS_DEBOUNCE"), "no FORGE_CHECKS_DEBOUNCE"
+assert d.get("subagentPromptCacheTtl"), "no subagentPromptCacheTtl"
+PY
+
+# guard.sh fires on 77 to 78 per cent of every tool call a run makes. Its five
+# rules were five `echo | grep` pipes, ten processes a fire. Keep them builtins:
+# this is structural, the same way the board is kept free of unlinkSync.
+grep -q 'grep -Eq' "$S/guard.sh" \
+  && fail "guard.sh is spawning grep again on the hot path" \
+  || ok "guard.sh matches its five rules with bash builtins"
+[ "$(grep -c 'deny "' "$S/guard.sh")" = 5 ] \
+  && ok "the denylist is still five rules" \
+  || fail "the denylist changed size"
 
 # `[ -lt ]` has three outcomes and the code read two: a non-integer operand
 # exits 2, and && reads that exactly like "new enough".

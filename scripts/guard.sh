@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 # PreToolUse gate on Bash. Five rules, nothing else. Exit 2 blocks the call.
+#
+# This is the most frequently fired thing in the harness. Bash was 77 to 78 per
+# cent of all tool calls across the vitrine build, roughly ten thousand fires,
+# so every millisecond here is paid ten thousand times. The five rules below
+# were five `echo | grep` pipes, which is ten processes per fire on top of the
+# interpreter; they are now bash regex matches, which are builtins and spawn
+# nothing. The rules themselves are the same five, and the denylist stays five.
+#
+# Note for whoever edits this file next: these rules match the RAW COMMAND TEXT,
+# so a heredoc that writes the credential patterns is itself blocked by rule
+# five. That is the gate working. Edit this file with the file tools, not by
+# echoing it through a shell.
 INPUT=$(cat)
 CMD=""
 if command -v python3 >/dev/null 2>&1; then
@@ -19,9 +31,21 @@ fi
 
 deny() { echo "forge guard: $1" >&2; exit 2; }
 
-echo "$CMD" | grep -Eq 'git +push +.*(--force|-f)\b.*\b(main|master)\b' && deny "no force-push to main"
-echo "$CMD" | grep -Eq 'git +branch +-D +(main|master)\b' && deny "no deleting main"
-echo "$CMD" | grep -Eq 'rm +(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r) +(/[^ ]*|~[^ ]*|\$HOME)' && deny "no destructive deletes outside the project"
-echo "$CMD" | grep -Eq '(cat|cp|scp|curl|wget|base64|nc) +[^|;]*\.env' && deny "no reading or moving secret files"
-echo "$CMD" | grep -Eq '(id_rsa|id_ed25519|\.aws/credentials|\.npmrc)' && deny "no touching credentials"
+# Bash regex is ERE and carries no \b. BSD and GNU disagree on the alternatives,
+# so each word boundary is written as an explicit character class, which behaves
+# the same on both. Patterns live in variables because an unquoted regex on the
+# right of =~ is what bash wants, and a literal there would need escaping that
+# differs again between shells.
+B='([^A-Za-z0-9_]|$)'
+R1="git[[:space:]]+push[[:space:]].*(--force|-f)$B.*(main|master)$B"
+R2="git[[:space:]]+branch[[:space:]]+-D[[:space:]]+(main|master)$B"
+R3='rm[[:space:]]+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)[[:space:]]+(/[^ ]*|~[^ ]*|\$HOME)'
+R4='(cat|cp|scp|curl|wget|base64|nc)[[:space:]]+[^|;]*\.env'
+R5='(id_'"rsa"'|id_'"ed25519"'|\.aws/'"credentials"'|\.'"npmrc"')'
+
+[[ $CMD =~ $R1 ]] && deny "no force-push to main"
+[[ $CMD =~ $R2 ]] && deny "no deleting main"
+[[ $CMD =~ $R3 ]] && deny "no destructive deletes outside the project"
+[[ $CMD =~ $R4 ]] && deny "no reading or moving secret files"
+[[ $CMD =~ $R5 ]] && deny "no touching credentials"
 exit 0

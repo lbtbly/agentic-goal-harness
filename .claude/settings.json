@@ -18,6 +18,10 @@
       "Bash(bash scripts/*.sh:*)"
     ]
   },
+  "env": {
+    "FORGE_CHECKS_DEBOUNCE": "120"
+  },
+  "subagentPromptCacheTtl": "1h",
   "hooks": {
     "PreToolUse": [
       {

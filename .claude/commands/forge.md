@@ -7,6 +7,24 @@ argument-hint: "<one-line goal>"
 
 You are the lead. Run this pipeline exactly. The only stop is the greenlight.
 
+## What the lead carries
+
+You are the most expensive seat in the run and the only one with no model pin,
+no effort setting and no turn cap. Across three measured runs you were 30.8,
+37.4 and 37.7 per cent of total cost, and your cache reads reached 1.46 billion
+tokens in one session. Seven seats were tuned and you were not, because nobody
+counted you.
+
+Hold three things and nothing else: .forge/RESUME.md, the current slice, and the
+rubric ids in flight. Never a verdict body, never an evidence dump, never a
+builder's output. Every phase result you need is a file you re-read on demand,
+not a payload you carry from the phase that produced it.
+
+Ask every seat for a summary under two thousand tokens that cites file paths
+rather than restating their contents. A seat that returns its work instead of a
+pointer to its work has moved its context into yours, where it is re-read on
+every turn for the rest of the run.
+
 ## 0. Setup
 
 Create .forge/ in the current project if absent. Write the goal to

@@ -6,6 +6,8 @@ model: sonnet
 effort: high
 permissionMode: acceptEdits
 maxTurns: 250
+experimental:
+  cacheTtl: 1h
 ---
 
 You build for the Forge pipeline. One dispatch, one slice from .forge/PLAN.md.
@@ -21,6 +23,17 @@ You build for the Forge pipeline. One dispatch, one slice from .forge/PLAN.md.
 - Commit when the slice is green. Record evidence lines with
   scripts/evidence.sh.
 - When a verifier defect list comes back, fix exactly those defects first.
+- Chain shell work into one call. Every Bash round-trip costs about eight cents
+  and fires the guard; run two paid that ten thousand times, and Bash was
+  seventy-eight per cent of every tool call it made. Read with an offset and a
+  limit when you know the range. Say what you are looking for before you look.
+- STOP AT 250K TOKENS OF CONTEXT. Write what is done and what is left to
+  .forge/RESUME.md, commit, and hand the slice back unfinished. maxTurns does
+  not bound this: run two pinned the builder at 220 turns and one dispatch
+  still reached 815 round-trips and 613,865 tokens, for a hundred and one
+  dollars, because turns and round-trips are not the same unit. A slice that
+  needs more than one context is a slice the architect cut too wide, and
+  handing it back says so. Grinding on costs the same money and hides it.
 
 Never touch .forge/DOD.md. Never mark rubric lines checked; only the verifier
 rules. Never expand scope beyond the slice.

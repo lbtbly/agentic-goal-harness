@@ -181,6 +181,19 @@ by a builder dispatch, never by the lead. Only the user may conclude a run
 below one hundred percent; the verdict and each open line then land in
 RESUME.md, exactly as written.
 
+What you hand a verifier is the contract, and it is a short list: the diff, the
+rubric lines in its scope, and paths to the evidence. Never the builder's
+RUNLOG, never its reasoning, never a summary of what it tried. A reviewer who
+sees the advocate's framing checks the code against itself instead of against
+the rubric, and that is the whole reason this seat is separate. Verification is
+25 to 29 per cent of an M or L run's cost, near parity with the builder, so a
+dispatch handed the wrong context is expensive twice over: it costs more and it
+judges worse.
+
+Where the account allows it, pin the verifier to a different model family than
+the builder. Top judges disagree on about four fifths of their errors, so
+family diversity buys coverage for a config change and no extra dispatch.
+
 The FIRST verify of a slice is full scope. A RE-VERIFY after a FAIL is scoped
 to the defect list plus that slice's `Closes:` ids plus any line still `- [ ]`,
 and you say so in the dispatch. The architect already guarantees the Closes
@@ -199,14 +212,77 @@ line, capped, and it logs what the cap dropped) and, when the defect count is
 unknown, the defect-sweep workflow: keep sweeping until a full pass returns no
 new defects, never a fixed number of passes.
 
-Escalation ladder, apply without asking:
+Escalation ladder, apply without asking. Record every verdict the moment it
+lands with `scripts/attempt.sh record <slice> <PASS|FAIL>`, and read the rung
+back with `scripts/attempt.sh state <slice>`. The counter is the ladder: until
+this existed nothing on disk counted fails per slice, DEFECTS.md is a flat
+append with no aggregation, and the compact policy preserves the goal, the
+slice and the unchecked lines but never the tally. So the ladder reset itself
+at every compaction, which on a long run means it never fired.
+
+- First FAIL: re-run the failing check with the evidence attached. Do not
+  escalate and do not rebuild yet. Audited verifier false negatives run about
+  24 per cent against false positives of 8.5, so a red verdict is more often
+  wrong than a green one, and escalating on it takes the expensive branch on
+  bad information a quarter of the time.
 - Two FAILs on the same slice: re-dispatch the builder with model raised one
   tier (sonnet to opus, opus to the session model). The seat pins
   `model: sonnet`, so raising it means passing `model` on the dispatch itself,
   which takes precedence over the frontmatter. Naming the rung without naming
-  the mechanism is how a ladder becomes a sentence.
-- Three FAILs on the same slice: send the slice back to the architect for a
-  re-plan. The bar never moves; the resources do.
+  the mechanism is how a ladder becomes a sentence. On a UI or craft line,
+  re-specify the brief before raising the model: on identical prompts the gap
+  between a vague and a specific brief measured wider than the gap between two
+  models.
+- Three FAILs on the same slice: `git reset --hard` to the pre-slice commit,
+  then send the slice to the architect with a short failure memo, and
+  `attempt.sh reset <slice>`. Rewind, do not continue: on 82 engineering tasks
+  rewind-with-memory beat continue-from-failure 87.8 to 62.2 per cent, and the
+  ablation is the load-bearing part, because resetting the conversation while
+  leaving a half-broken tree was the worst arm of the three. That means the
+  pre-slice commit must exist: commit before dispatching a builder, not only
+  after a green verdict. The bar never moves; the resources do.
+
+## Parallel builders, when the scopes are genuinely disjoint
+
+M and L may run two or three builders at once, and the unit of disjointness is
+the feature and the interface, never the file. One builder on a sharing surface
+and one on an unrelated server-side algorithm do not collide; two on the same
+feature do, however carefully they divide the files.
+
+The reason to be careful is not merge conflicts, which git handles. It is that
+parallel writers make independent implicit decisions about style, edge cases
+and patterns, and three failure modes survive perfect feature-level separation:
+
+- Shared surfaces. Two independent features still both reach the tokens, the
+  component library, the API client, the shared types, the schema and
+  migrations, the router, auth. A client half and a server half share the
+  contract between them by construction, so a clean merge proves nothing.
+- Precedent drift. The builder matches the nearest precedent in the repo, and a
+  builder branched before its sibling landed can only match the older one.
+- The worktree base. `isolation: worktree` branches from the DEFAULT branch, not
+  the parent session's HEAD, so builders in worktrees cannot see each other's
+  work at all, and a builder on slice 4 starts from a tree missing slices 1-3.
+
+So the test is a set intersection the architect can run at plan time, and every
+condition must hold:
+
+1. Each slice in PLAN.md declares its write scope: the routes and modules it
+   may touch, and whether it claims any shared surface from the list above.
+2. Two slices may run at once only if their write scopes are disjoint AND
+   neither claims a shared surface. A slice touching a shared surface runs
+   alone.
+3. Where two parallel slices meet, the architect writes and commits the contract
+   between them BEFORE either dispatches. Without that they are not disjoint,
+   they are coupled through an unwritten agreement.
+4. Both builders branch from the same commit, so both match the same precedent.
+   A style divergence found at merge is a defect against the later slice.
+5. Merge serially and run the full check between. Never merge both and verify
+   once.
+6. Two or three, L only. S and M stay serial under rule 4.
+
+The gain is wall clock, never tokens: parallel dispatches always consume more
+than the serial equivalent. Buy it when the streams are genuinely independent
+and say so plainly; never present it as a saving.
 
 ## 10. SHIP
 

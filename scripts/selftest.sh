@@ -12,7 +12,7 @@ S="$ROOT/scripts"
 # Every script, not a frozen list of nine: commit.sh and preflight.sh shipped
 # with no assertion that they stay silent and side-effect-free outside a
 # forge project, which is the guarantee this loop exists to hold.
-ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh"
+ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh attempt.sh"
 FAILS=0
 ok()   { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; FAILS=$((FAILS+1)); }
@@ -292,6 +292,53 @@ d=json.load(open(sys.argv[1]))
 assert d.get("env",{}).get("FORGE_CHECKS_DEBOUNCE"), "no FORGE_CHECKS_DEBOUNCE"
 assert d.get("subagentPromptCacheTtl"), "no subagentPromptCacheTtl"
 PY
+
+# The escalation ladder had no counter anywhere on disk, so it reset itself at
+# every compaction and effectively never fired. The rung is computed from the
+# ledger rather than remembered, which is what makes it survive.
+AAT="$AUD/attempt"; mkdir -p "$AAT/.forge"
+run_at () { ( cd "$AAT" && CLAUDE_PROJECT_DIR="$AAT" bash "$S/attempt.sh" "$@" 2>&1 ); }
+run_at state s1 | grep -q 'rung: clear' \
+  && ok "a slice with no verdicts sits on no rung" \
+  || fail "attempt.sh does not start clear"
+run_at record s1 FAIL >/dev/null
+run_at state s1 | grep -q 'rung: re-check' \
+  && ok "the first FAIL re-checks rather than escalating" \
+  || fail "the first FAIL escalates, on a verdict wrong a quarter of the time"
+run_at record s1 FAIL >/dev/null
+run_at state s1 | grep -q 'rung: raise the model' \
+  && ok "two FAILs raise the model" \
+  || fail "two FAILs do not raise the model"
+run_at record s1 FAIL >/dev/null
+run_at state s1 | grep -q 'rung: re-plan' \
+  && ok "three FAILs re-plan the slice" \
+  || fail "three FAILs do not re-plan"
+run_at state s1 | grep -q 'rung: re-plan' \
+  && ok "the rung survives a fresh invocation, which is the compaction case" \
+  || fail "the ladder loses its state between calls"
+run_at record s2 FAIL >/dev/null
+run_at state s1 | grep -q '3 fail' \
+  && ok "slices count independently" \
+  || fail "one slice's fails leak into another"
+run_at reset s1 | grep -q 'rung: clear' \
+  && ok "a re-plan clears the counter" \
+  || fail "reset does not clear the counter"
+
+# The verifier must be able to say it could not tell. A judge with no way out
+# invents a verdict, and an invented PASS is indistinguishable from a real one
+# in a rubric-driven run.
+grep -q 'UNKNOWN' "$ROOT/.claude/agents/verifier.md" \
+  && ok "the verifier has a third ruling" \
+  || fail "the verifier can only invent PASS or FAIL"
+grep -qi "builder's reasoning" "$ROOT/.claude/agents/verifier.md" \
+  && ok "the verifier is denied the builder's framing" \
+  || fail "the verifier may anchor on the work it is judging"
+grep -q 'holdout' "$ROOT/.claude/agents/architect.md" \
+  && ok "the architect writes a held-out suite the builder cannot read" \
+  || fail "acceptance checks are all visible to the builder"
+grep -q 'write scope' "$ROOT/.claude/agents/architect.md" \
+  && ok "every slice declares a write scope, so parallelism is checkable" \
+  || fail "no write scope, so parallel builders cannot be tested for overlap"
 
 # guard.sh fires on 77 to 78 per cent of every tool call a run makes. Its five
 # rules were five `echo | grep` pipes, ten processes a fire. Keep them builtins:

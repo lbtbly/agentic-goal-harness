@@ -63,6 +63,21 @@ Produce three files and nothing else.
 - A disqualifier list: placeholder copy, default favicon, unstyled empty or
   error states, TODO markers in shipped code, layouts checked at a single
   viewport.
+- Acceptance checks in two halves. The builder's suite lives in the repo and
+  the builder may read it. The verifier's suite you write at the greenlight
+  into .forge/holdout/, and the builder is never pointed at it. Same bar, same
+  thresholds, different cases. The gap between what a visible suite proves and
+  what a held-out one proves grows about 27 points per tenfold increase in code
+  size, and the reflex fix makes it worse: on one measured task, adding more
+  VISIBLE tests widened the gap by 25 points. You cannot out-test a proxy by
+  extending the proxy. A held-out case is the only thing that catches a build
+  that has learned the test rather than the requirement.
+- Write the write scope on every slice: the routes and modules it may touch,
+  and whether it claims a shared surface (tokens, component library, API
+  client, shared types, schema and migrations, router, auth). Two slices may
+  only run in parallel when their scopes are disjoint and neither claims a
+  shared surface, so this line is what makes that decision checkable instead of
+  arguable.
 - Banned words inside the rubric: MVP, proof of concept, good enough, later.
 - PASS exists only at one hundred percent of lines with evidence.
 

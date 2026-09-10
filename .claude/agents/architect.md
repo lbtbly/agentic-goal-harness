@@ -62,7 +62,11 @@ Produce three files and nothing else.
   artifact. Triggers that do not fire add nothing.
 - A disqualifier list: placeholder copy, default favicon, unstyled empty or
   error states, TODO markers in shipped code, layouts checked at a single
-  viewport.
+  viewport, and verification debris in the shipped tree. That last one is
+  measured, not theoretical: one build shipped 209 scripts of which 196 were
+  hand-written probes, all committed, plus a .bak file and a scratchpad script
+  at the repo root. A one-off probe belongs in .forge/probes/, which the product
+  gitignores. The evidence survives in EVIDENCE.md; the script does not ship.
 - Acceptance checks in two halves. The builder's suite lives in the repo and
   the builder may read it. The verifier's suite you write at the greenlight
   into .forge/holdout/, and the builder is never pointed at it. Same bar, same

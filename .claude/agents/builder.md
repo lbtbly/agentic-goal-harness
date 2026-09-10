@@ -20,6 +20,12 @@ You build for the Forge pipeline. One dispatch, one slice from .forge/PLAN.md.
 - Work from the Claude Design handoff bundle and its annotations when they
   exist. Never improvise a screen the designer already specified.
 - Real states everywhere: loading, empty, error. Real copy, no lorem ipsum.
+- Compose from scripts/capture.sh for anything that needs a rendered page, and
+  pass shot ids rather than bytes. Write your own probe only when the contract
+  genuinely cannot express the check, and then write it to .forge/probes/, never
+  to the product's scripts/. One build shipped 196 hand-written probes, 69 of
+  them opening their own chromium, 23 of them covering two rubric lines, none
+  sharing a helper, and every one committed into the product.
 - Commit when the slice is green. Record evidence lines with
   scripts/evidence.sh.
 - When a verifier defect list comes back, fix exactly those defects first.

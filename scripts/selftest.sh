@@ -12,7 +12,7 @@ S="$ROOT/scripts"
 # Every script, not a frozen list of nine: commit.sh and preflight.sh shipped
 # with no assertion that they stay silent and side-effect-free outside a
 # forge project, which is the guarantee this loop exists to hold.
-ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh attempt.sh"
+ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh attempt.sh capture.sh"
 FAILS=0
 ok()   { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; FAILS=$((FAILS+1)); }
@@ -292,6 +292,23 @@ d=json.load(open(sys.argv[1]))
 assert d.get("env",{}).get("FORGE_CHECKS_DEBOUNCE"), "no FORGE_CHECKS_DEBOUNCE"
 assert d.get("subagentPromptCacheTtl"), "no subagentPromptCacheTtl"
 PY
+
+# 196 hand-written probes shipped inside one product, 69 of them opening their
+# own chromium, 23 covering two rubric lines, none sharing a helper, all
+# committed. The contract is the floor that collapses them, and it only works if
+# the seats are pointed at it and the debris is a disqualifier.
+grep -q 'capture.sh' "$ROOT/.claude/agents/builder.md" \
+  && ok "the builder composes from the capture contract" \
+  || fail "the builder is free to reinvent capture per rubric line"
+grep -q 'capture.sh' "$ROOT/.claude/agents/verifier.md" \
+  && ok "the verifier composes from the capture contract" \
+  || fail "the verifier is free to reinvent capture per rubric line"
+grep -q 'probes' "$ROOT/.claude/agents/architect.md" \
+  && ok "verification debris is a disqualifier" \
+  || fail "nothing stops probe scripts shipping inside the product"
+grep -q 'ANCHOR THE RENDER' "$ROOT/.claude/agents/verifier.md" \
+  && ok "the render is anchored before anything is judged" \
+  || fail "a blank frame can still be ruled on as a design difference"
 
 # The escalation ladder had no counter anywhere on disk, so it reset itself at
 # every compaction and effectively never fired. The rung is computed from the

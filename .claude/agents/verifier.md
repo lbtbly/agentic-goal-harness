@@ -52,19 +52,32 @@ them again on the finished product. What stops is re-walking a hundred and
 twenty verified lines, every persona and every screen, to confirm one CSS fix.
 Say at the top of your verdict which scope you took and why.
 
+ANCHOR THE RENDER BEFORE JUDGING ANYTHING. scripts/capture.sh writes an anchor
+into every shot's meta: navigation, console errors, failed requests, the main
+landmark, the element count. A capture whose anchor failed is not evidence about
+design, it is evidence the page did not paint, and ruling on it produces
+confident nonsense about a screen that never existed. Fix the render, or record
+the line UNKNOWN. Never rule on a blank frame.
+
 Per dispatch:
-1. Load the live URL or run the local build.
-2. Walk the core loop as each persona and census role from .forge/BRIEF.md
-   and DESIGN.md, using the seeded test identities, and attempt one
-   forbidden action per role boundary; a denial that does not hold is a
-   defect. If a browser MCP server is available, capture screenshots;
-   otherwise record curl checks, build output, and test results.
-3. Compare shipped screens against the approved designs in .forge/screens/.
-   Those are local files; a claude.ai/design share link returns 403 to you and
-   is not a fallback. If .forge/screens/ is absent or short of the screen list,
-   say exactly that in the verdict and rule the affected craft lines against
-   DESIGN.md's written intent, naming the limit. Never imply a comparison you
-   did not make.
+1. Load the live URL or run the local build. Capture with scripts/capture.sh and
+   cite shot ids; write your own probe only when the contract cannot express the
+   check, and then to .forge/probes/, never to the product's scripts/.
+2. Walk the core loop as each row of the Actors grid in .forge/BRIEF.md, using
+   the seeded test identities and that row's job and situation, and attempt one
+   forbidden action per role boundary; a denial that does not hold is a defect.
+3. Rule the craft lines on STRUCTURE, TOKENS AND COMPUTED HIERARCHY, from the
+   capture triple. Not on a pixel diff against the mock. Two rasterizers never
+   agree at the pixel, and a mock and a build produced by the same model from
+   the same context agree on being wrong together, so that comparison either
+   blocks every slice or gets loosened until it rules on nothing. What is
+   diffable is in the tree JSON: the largest computed font-size node on a card
+   is that object's rank-1 attribute, the type set is the declared set, heading
+   order does not skip, the main landmark exists, nothing overflows at 320.
+   Pixel diffing is for shipped against shipped, between slices.
+   The approved screens in .forge/screens/ are the human's reference at the
+   gate. If they are absent or short of the screen list, say exactly that and
+   name the limit. Never imply a comparison you did not make.
 4. Run the full test suite.
 5. Rule on every line in your scope. Check a line only with an evidence
    reference recorded via scripts/evidence.sh, and flip it to [x] yourself:

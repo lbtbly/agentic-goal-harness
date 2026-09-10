@@ -3,7 +3,7 @@
 # Code update; drift recurs and this is the one-command answer.
 # Checks: every script no-ops outside a forge project, behave against a
 # fixture .forge/, dod-gate blocks and releases correctly, rehydrate labels
-# both arming states, the four workflows parse, settings.json and every agent
+# both arming states, the three workflows parse, settings.json and every agent
 
 # frontmatter parse. Exits non-zero on any failure.
 set -u
@@ -323,6 +323,25 @@ run_at state s1 | grep -q '3 fail' \
 run_at reset s1 | grep -q 'rung: clear' \
   && ok "a re-plan clears the counter" \
   || fail "reset does not clear the counter"
+
+# The design phase's falsification test earned exactly one gate, and it only
+# works if LOUD is declared: a critic named a real build's dominant region
+# correctly and had no way to know it was a filter chip rather than the content.
+grep -q 'LOUD' "$ROOT/.claude/skills/design/SKILL.md" \
+  && ok "the screen grid declares a loud element per route" \
+  || fail "nothing declares LOUD, so the squint critic cannot be wrong about it"
+[ -f "$ROOT/.claude/agents/design-critic.md" ] \
+  && ok "the blind critic seat exists" \
+  || fail "no design-critic seat"
+grep -qE '^tools: Read$' "$ROOT/.claude/agents/design-critic.md" \
+  && ok "the critic is blind by tool grant, not by request" \
+  || fail "the critic can search the filesystem and find what it must not see"
+[ -f "$ROOT/.claude/workflows/persona-panel.js" ] \
+  && fail "the persona panel is back" \
+  || ok "the persona panel stays struck"
+[ -f "$ROOT/.claude/workflows/design-tournament.js" ] \
+  && fail "the tournament crowns a winner again" \
+  || ok "directions merge rather than crown"
 
 # The verifier must be able to say it could not tell. A judge with no way out
 # invents a verdict, and an invented PASS is indistinguishable from a real one
@@ -840,7 +859,7 @@ console.log(m ? (+m[1])+(+m[2])+(+(m[3]||0))+(+m[4])+(+u)+(+f) : -1);
   || fail "states do not partition the rubric (sum=$SUM of 4)"
 rm -rf "$T8"
 
-# 5. The four workflows parse under the runtime grammar (async body, export stripped).
+# 5. The three workflows parse under the runtime grammar (async body, export stripped).
 if command -v node >/dev/null 2>&1; then
   node -e '
     const fs = require("fs");
@@ -852,7 +871,7 @@ if command -v node >/dev/null 2>&1; then
       catch (e) { fail = 1; console.error(f + ": " + e.message); }
     }
     process.exit(fail);' "$ROOT/.claude/workflows" \
-    && ok "four workflows parse" || fail "a workflow does not parse"
+    && ok "three workflows parse" || fail "a workflow does not parse"
 else
   fail "node not found; workflows unchecked"
 fi

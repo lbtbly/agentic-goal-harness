@@ -2,3 +2,6 @@
 {"ts":"2026-09-10T15:13:23Z","sid":"optimization-2026-09","kind":"guard_block","key":"secret_guard","severity":"security"}
 {"ts":"2026-09-10T15:14:02Z","sid":"optimization-2026-09","kind":"guard_block","key":"secret_guard","severity":"security"}
 {"ts":"2026-09-10T15:14:49Z","sid":"optimization-2026-09","kind":"guard_block","key":"secret_guard","severity":"security"}
+{"ts":"2026-09-10T16:50:22Z","sid":"optimization-2026-09","kind":"subagent_fail","key":""}
+{"ts":"2026-09-10T16:51:19Z","sid":"optimization-2026-09","kind":"subagent_fail","key":"general-purpose"}
+{"ts":"2026-09-10T16:51:21Z","sid":"optimization-2026-09","kind":"user_correction","key":"contradiction","length":"long"}

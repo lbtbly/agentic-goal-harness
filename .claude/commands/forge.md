@@ -72,31 +72,64 @@ primary sources first. One page back, saved to .forge/BRIEF.md under Research.
 
 ## 4. DESIGN
 
-On S goals: no panel, no tournament, and the architect's direction card
+On S goals: no directions workflow, and the architect's direction card
 stands either way. When the done level is deployed or beyond, PLAN.md
 proposes one designer dispatch as the first build step, run after approval
 with the brief and taste references for the key screen and tokens. Plain
 approval keeps it; "approve, skip design" strikes it. A runs-locally S
 skips this phase entirely. Everything below is M and L.
 
-You, the lead, first write the role census into BRIEF.md under Roles: every
-end-user kind, back-office roles by mandate, admin tiers, the operator, each
-with its access rights (the design skill holds the format). Then run the
-persona panel: three to five personas drawn from the census, one interviewer
-pass per persona (use the persona-panel workflow if available, otherwise
-sequential Task calls), probing by kind per the design skill. Synthesize
-findings, access boundaries included.
+The scout writes the Actors grid into BRIEF.md under Actors: three to six rows,
+one per actor-job pair, in the format the design skill holds. It replaces both
+the role census and the persona panel. There are no interviews. Casting
+personas from a role census and asking them what they would use scores about
+54 per cent accuracy on interface questions where grounded profiles score 62
+and shuffled personas score 52, and every model tested carries a uniform
+acquiescence shift, so "would you use this" measures the model's agreement
+floor rather than the actor. The grid asks for parameters instead of opinions:
+a job, a situation, a band, a stage, an incumbent, and two switching forces that
+each name a surface.
 
-Then, when the direction is not obvious, run the design-tournament workflow:
-generate several directions, filter them against the standards rubric, and let
-pairwise judging pick one. Taste decisions are compared, never scored.
+Read the assumed cells before you go further. They are the run's exposed
+surface, and they go to the human at the greenlight verbatim.
 
-Then delegate to the designer agent with the synthesis and the chosen direction: it creates the key
-screens in Claude Design through the claude-design MCP server, runs
-/design-sync when the repo already holds a design system, and writes
-.forge/DESIGN.md with information architecture, screen list with share links,
-tokens, and interaction notes. No MCP available: standalone HTML wireframes in
-.forge/wireframes/.
+Then, when the direction is not obvious, run the design-directions workflow: it
+stratifies five positions for this goal, generates one direction each, merges
+the best of all five into one, and iterates once. It does not crown a winner.
+Picking the best of four scores 56 per cent above the average, merging scores
+70, and merging plus one iteration scores 152; and a model judging design
+pairwise agrees with human experts about two times in three, so a crowned
+winner discards the better direction roughly one time in three.
+
+Then delegate to the designer agent with the Actors grid and the chosen
+direction. It writes .forge/SCREENS.md first, before any visual work: one row
+per route with its states, transitions, density, and LOUD, QUIET and PRIMARY,
+plus the ranked attribute table per primary object. Then it creates the key
+screens in Claude Design through the claude-design MCP server, runs /design-sync
+when the repo already holds a design system, and writes .forge/DESIGN.md. No MCP
+available: standalone HTML wireframes in .forge/wireframes/.
+
+Strip the provenance tags before the grid reaches the designer. A citation read
+as an instruction becomes a directive.
+
+## 4b. SQUINT
+
+Blur every exported screen and dispatch the design-critic, which holds Read and
+nothing else so it cannot go and find the sharp original. Match its named
+dominant region against the LOUD element declared for that route. A mismatch
+sends the screen back to the designer.
+
+    sips -Z 44  screens/NN-name.png --out /tmp/sq.png
+    sips -Z 900 /tmp/sq.png --out .forge/squint/NN-name.png
+
+This costs one dispatch and about ninety seconds. It is in the pipeline because
+it earned its place: run against five shipped screens of a real build it
+returned a clear dominant region on four, which refuted a much larger claim that
+the design phase produced flat hierarchy. On the fifth, the dense one, the
+dominant region was a filter chip and a secondary action while the page title
+and the two largest numbers on the page disappeared. The critic named the chips
+correctly and had no way to know that was wrong. Declaring LOUD is what turns a
+correct observation into a defect.
 
 ## 5. PLAN
 

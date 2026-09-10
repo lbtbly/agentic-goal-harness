@@ -48,4 +48,16 @@ R5='(id_'"rsa"'|id_'"ed25519"'|\.aws/'"credentials"'|\.'"npmrc"')'
 [[ $CMD =~ $R3 ]] && deny "no destructive deletes outside the project"
 [[ $CMD =~ $R4 ]] && deny "no reading or moving secret files"
 [[ $CMD =~ $R5 ]] && deny "no touching credentials"
+
+# Per-project additions live in .forge/overrides/guard-deny, one extended regex
+# per line. A project that needs a sixth rule adds it there rather than editing
+# this file, which is what keeps this copy hash-clean and therefore syncable.
+# The shipped denylist stays five; overrides only ever ADD.
+OVR="${CLAUDE_PROJECT_DIR:-.}/.forge/overrides/guard-deny"
+if [ -f "$OVR" ]; then
+  while IFS= read -r rule; do
+    case "$rule" in ''|'#'*) continue ;; esac
+    [[ $CMD =~ $rule ]] && deny "denied by .forge/overrides/guard-deny"
+  done < "$OVR"
+fi
 exit 0

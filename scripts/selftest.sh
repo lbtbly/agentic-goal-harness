@@ -348,6 +348,31 @@ grep -qi "TUTORIAL\|tutorial takes a stranger" "$ROOT/.claude/skills/standards/S
   && ok "the four documentation kinds are named and kept apart" \
   || fail "documentation has no shape, so it collapses into one file"
 
+# One command, one triple, every platform. The seat prose must never fork per
+# target, so platform lives in data and the adapters end in the same three files.
+for plat in ios android engine; do
+  grep -q "  $plat)" "$S/capture.sh" \
+    && ok "capture.sh carries the $plat adapter" \
+    || fail "no $plat capture path, so that target has no evidence contract"
+done
+grep -q 'nographics' "$S/capture.sh" \
+  && ok "the engine path refuses the flag that reports green over blank frames" \
+  || fail "nothing warns about -nographics"
+grep -q 'exec-out screencap' "$S/capture.sh" \
+  && ok "android capture avoids the pipe that corrupts the png" \
+  || fail "android capture uses the corrupting form"
+
+# Sparse overrides, so a project never needs to edit a vendored file and the
+# hash-clean overwrite stays the normal case. Overrides only ever ADD.
+GOV=$(mktemp -d); mkdir -p "$GOV/.forge/overrides"
+printf 'terraform[[:space:]]+destroy\n' > "$GOV/.forge/overrides/guard-deny"
+payload () { python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1"; }
+payload 'terraform destroy' | ( CLAUDE_PROJECT_DIR="$GOV" bash "$S/guard.sh" >/dev/null 2>&1 )
+[ $? -eq 2 ] && ok "a project override adds a rule" || fail "overrides do not deny"
+payload 'terraform destroy' | ( CLAUDE_PROJECT_DIR="$(mktemp -d)" bash "$S/guard.sh" >/dev/null 2>&1 )
+[ $? -eq 0 ] && ok "with no override file the denylist is unchanged" || fail "overrides leak between projects"
+rm -rf "$GOV"
+
 # 196 hand-written probes shipped inside one product, 69 of them opening their
 # own chromium, 23 covering two rubric lines, none sharing a helper, all
 # committed. The contract is the floor that collapses them, and it only works if
@@ -437,9 +462,11 @@ grep -q 'write scope' "$ROOT/.claude/agents/architect.md" \
 grep -q 'grep -Eq' "$S/guard.sh" \
   && fail "guard.sh is spawning grep again on the hot path" \
   || ok "guard.sh matches its five rules with bash builtins"
-[ "$(grep -c 'deny "' "$S/guard.sh")" = 5 ] \
-  && ok "the denylist is still five rules" \
-  || fail "the denylist changed size"
+# Count the SHIPPED rules, not the deny calls: the per-project override handler
+# is a sixth deny call and is deliberately not a sixth rule.
+[ "$(grep -cE '^\[\[ \$CMD =~ \$R[0-9]+ \]\]' "$S/guard.sh")" = 5 ] \
+  && ok "the shipped denylist is still five rules" \
+  || fail "the shipped denylist changed size"
 
 # `[ -lt ]` has three outcomes and the code read two: a non-integer operand
 # exits 2, and && reads that exactly like "new enough".

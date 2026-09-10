@@ -2,8 +2,13 @@
 # One capture, one contract, three files.
 #
 #   capture.sh <shot-id> <url> [--viewport 1440x900] [--theme light|dark]
-#              [--state <name>] [--wait <selector>]
+#              [--state <name>] [--wait <selector>] [--platform web|ios|android|engine]
 #   capture.sh --smoke
+#
+# PLATFORM LIVES IN DATA, NOT IN SEAT PROSE. Every target answers the same
+# command and writes the same three files, so the verifier's instructions never
+# fork per platform. What differs is the freeze recipe, the variant matrix and
+# where the tree comes from, and all of that is configuration.
 #
 # WHY THIS EXISTS. The vitrine build shipped 209 scripts, 13 of them Forge's and
 # 196 hand-written by the run. Sixty-nine imported chromium from playwright
@@ -35,7 +40,14 @@ cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 [ -d .forge ] || exit 0
 
 SHOT=""; URL=""; VIEWPORT="1440x900"; THEME="light"; STATE="ideal"; WAITSEL=""
-SMOKE=0
+SMOKE=0; PLATFORM="${FORGE_PLATFORM:-web}"; TEXTSIZE="${FORGE_TEXT_SIZE:-default}"; DEVICE=""
+LOCKED=.forge/design/CAPTURE.lock.json
+if [ -f "$LOCKED" ] && command -v python3 >/dev/null 2>&1; then
+  PLATFORM=$(python3 -c "
+import json,sys
+try: print(json.load(open('$LOCKED')).get('platform','$PLATFORM'))
+except Exception: print('$PLATFORM')" 2>/dev/null || echo "$PLATFORM")
+fi
 while [ $# -gt 0 ]; do
   case "$1" in
     --smoke)    SMOKE=1; shift ;;
@@ -43,6 +55,9 @@ while [ $# -gt 0 ]; do
     --theme)    THEME="$2"; shift 2 ;;
     --state)    STATE="$2"; shift 2 ;;
     --wait)     WAITSEL="$2"; shift 2 ;;
+    --platform) PLATFORM="$2"; shift 2 ;;
+    --device)   DEVICE="$2"; shift 2 ;;
+    --text-size) TEXTSIZE="$2"; shift 2 ;;
     -*)         echo "capture: unknown flag $1" >&2; exit 2 ;;
     *)          if [ -z "$SHOT" ]; then SHOT="$1"; else URL="$1"; fi; shift ;;
   esac
@@ -53,16 +68,93 @@ if [ "$SMOKE" = 1 ]; then
   URL="${URL:-${FORGE_BASE_URL:-http://localhost:3000}}"
 fi
 [ -z "$SHOT" ] && { echo "capture: no shot id" >&2; exit 2; }
-[ -z "$URL" ] && { echo "capture: no url" >&2; exit 2; }
+# Only the web path navigates. A simulator or an engine rig captures whatever is
+# already on screen, so demanding a URL there would be a usage error about a
+# concept that does not exist on that platform.
+[ "$PLATFORM" = web ] && [ -z "$URL" ] && { echo "capture: no url" >&2; exit 2; }
 
+mkdir -p .forge/evidence/shots .forge/evidence/tree
+
+# ---------------------------------------------------------------- non-web
+# Each of these ends in the same triple. Where a platform genuinely has no
+# element tree, the rig emits its declared regions and the meta marks the shot
+# tree:declared, so a verifier knows it is reading a contract rather than an
+# observation and does not claim a comparison it did not make.
+emit_meta () { # emit_meta <png> <treekind> <cmd> <extra-json>
+  python3 - "$SHOT" "$1" "$2" "$3" "${4:-{\}}" <<'PYMETA'
+import hashlib, json, os, sys
+shot, png, treekind, cmd, extra = sys.argv[1:6]
+sha = hashlib.sha256(open(png,'rb').read()).hexdigest() if os.path.exists(png) else None
+meta = {"shot": shot, "capturedBy": "scripts/capture.sh", "command": cmd,
+        "tree": treekind, "sha256": sha,
+        "anchor": {"rendered": bool(sha), "ok": bool(sha)}}
+try: meta.update(json.loads(extra))
+except Exception: pass
+open(f".forge/evidence/shots/{shot}.meta.json","w").write(json.dumps(meta, indent=2))
+print(f"shot     .forge/evidence/shots/{shot}.png")
+print(f"meta     .forge/evidence/shots/{shot}.meta.json")
+print(f"sha256   {sha}")
+print(f"anchor   {'ok' if sha else 'FAILED'}")
+PYMETA
+}
+
+case "$PLATFORM" in
+  ios)
+    # Freeze the status bar BEFORE the frame, or the clock and the battery make
+    # every capture a new image and the threshold gets widened until it rules on
+    # nothing. Permissions are granted up front so no system modal covers the
+    # first frame.
+    command -v xcrun >/dev/null 2>&1 || { echo "capture: xcrun missing. xcode-select --install" >&2; exit 3; }
+    xcrun simctl status_bar booted override --time "9:41" --dataNetwork wifi \
+      --wifiMode active --wifiBars 3 --cellularBars 4 \
+      --batteryState charged --batteryLevel 100 >/dev/null 2>&1 || true
+    xcrun simctl ui booted appearance "$THEME" >/dev/null 2>&1 || true
+    # The variant that catches the real defect. Text clipping and contrast
+    # collapse appear at accessibility content sizes, so the default-size
+    # light-mode capture is exactly the one that hides what agents get wrong.
+    [ "$TEXTSIZE" != default ] && xcrun simctl ui booted content_size "$TEXTSIZE" >/dev/null 2>&1
+    PNG=".forge/evidence/shots/$SHOT.png"
+    xcrun simctl io booted screenshot "$PNG" >/dev/null 2>&1 || { echo "capture: simctl screenshot failed; is a simulator booted?" >&2; exit 4; }
+    if command -v maestro >/dev/null 2>&1; then
+      maestro inspect-screen --format json > ".forge/evidence/tree/$SHOT.json" 2>/dev/null \
+        && TREE=observed || TREE=declared
+    else TREE=declared; fi
+    emit_meta "$PNG" "$TREE" "xcrun simctl io booted screenshot" "{\"appearance\":\"$THEME\",\"contentSize\":\"$TEXTSIZE\"}"
+    exit 0 ;;
+  android)
+    command -v adb >/dev/null 2>&1 || { echo "capture: adb missing. brew install --cask android-platform-tools" >&2; exit 3; }
+    PNG=".forge/evidence/shots/$SHOT.png"
+    # exec-out, never `adb shell screencap` piped: shell line-ending translation
+    # corrupts the PNG and the corruption looks like a rendering difference.
+    adb exec-out screencap -p > "$PNG" 2>/dev/null || { echo "capture: adb screencap failed; is an emulator running?" >&2; exit 4; }
+    if command -v maestro >/dev/null 2>&1; then
+      maestro inspect-screen --format json > ".forge/evidence/tree/$SHOT.json" 2>/dev/null \
+        && TREE=observed || TREE=declared
+    else TREE=declared; fi
+    emit_meta "$PNG" "$TREE" "adb exec-out screencap -p" "{\"appearance\":\"$THEME\"}"
+    exit 0 ;;
+  engine)
+    # The rig belongs in the target repo, because evidence that exists only
+    # inside one MCP session on one OS is not reproducible and does not satisfy
+    # rule 6. This dispatches to it and refuses to invent one.
+    RIG="${FORGE_ENGINE_RIG:-scripts/engine-capture.sh}"
+    [ -x "$RIG" ] || { echo "capture: no engine rig at $RIG. The target repo owns it; it must write .forge/evidence/shots/<id>.png and never pass -nographics, which initialises no graphics device and reports green over blank frames." >&2; exit 3; }
+    SHOT="$SHOT" THEME="$THEME" STATE="$STATE" "$RIG" || exit 4
+    PNG=".forge/evidence/shots/$SHOT.png"
+    [ -f ".forge/evidence/tree/$SHOT.json" ] && TREE=observed || TREE=declared
+    emit_meta "$PNG" "$TREE" "$RIG" "{\"engine\":true}"
+    exit 0 ;;
+  web) ;;
+  *) echo "capture: unknown platform $PLATFORM" >&2; exit 2 ;;
+esac
+
+# ---------------------------------------------------------------- web
 command -v node >/dev/null 2>&1 || { echo "capture: node is not installed" >&2; exit 3; }
 node -e "require.resolve('playwright')" 2>/dev/null || \
   node -e "require.resolve('playwright-core')" 2>/dev/null || {
     echo "capture: playwright is not installed. npm i -D playwright && npx playwright install chromium" >&2
     exit 3
   }
-
-mkdir -p .forge/evidence/shots .forge/evidence/tree
 
 SHOT="$SHOT" URL="$URL" VIEWPORT="$VIEWPORT" THEME="$THEME" STATE="$STATE" WAITSEL="$WAITSEL" \
 node --input-type=module -e '

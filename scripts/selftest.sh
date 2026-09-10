@@ -344,6 +344,18 @@ grep -qi "never be copied into a target project\|not the README of anything Forg
 grep -qi "harness's README into the product\|scaffold README" "$ROOT/.claude/agents/builder.md" \
   && ok "the builder is told not to ship the harness README" \
   || fail "the builder may ship the harness README again"
+grep -q 'What changed in this version' "$ROOT/START_HERE.html" \
+  && ok "START_HERE opens on what changed since the last version" \
+  || fail "START_HERE has no changelog section"
+for term in attempt.sh capture.sh manifest.mjs cost.mjs design-critic; do
+  grep -qF "$term" "$ROOT/START_HERE.html" \
+    && ok "START_HERE mentions $term" \
+    || fail "START_HERE never mentions $term, so the onboarding page is behind the harness"
+done
+grep -qi "seven seats\|seven forge subagents" "$ROOT/START_HERE.html" \
+  && fail "START_HERE still claims seven seats" \
+  || ok "START_HERE's seat count is current"
+
 grep -qi "TUTORIAL\|tutorial takes a stranger" "$ROOT/.claude/skills/standards/SKILL.md" \
   && ok "the four documentation kinds are named and kept apart" \
   || fail "documentation has no shape, so it collapses into one file"

@@ -57,6 +57,24 @@
   dt { font-weight: 600; margin-top: 0.8rem; }
   dd { margin-left: 0; color: var(--dim); }
   .svg-note { display: none; }
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 </head>
 <body>
@@ -65,6 +83,47 @@
 <h1>Forge, start here</h1>
 <p class="lede">A goal harness for Claude Code. One command carries a one-line
 goal to a shipped product, with one decision left to you.</p>
+
+<div class="changed">
+<h2>What changed in this version</h2>
+<p class="when">10 September 2026 &middot; branch optimization-2026-09</p>
+
+<p>Three runs were measured out of their own transcripts, and most of the
+obvious advice turned out to be wrong for this harness. Cost is context length
+inside a dispatch: cache reads are 62 to 66 per cent of a run and output is 10
+to 13, so trimming prose is a rounding error. Two of the three premises that
+were tested before being built failed outright.</p>
+
+<table>
+<thead><tr><th>Change</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>The lead has a context contract</td><td class="why">It was 33 to 58 per cent of every measured run and the only seat with no model, no effort and no turn cap. One session cost $1,110 across 3,540 round-trips at 998,263 peak context.</td></tr>
+<tr><td><code>runlog.sh</code> gates on the seat name</td><td class="why">SubagentStop is not the dispatch boundary: it fired 9,324 times against 185 real dispatches, each running an unthrottled typecheck. About seven hours of blocking hook time per M or L run.</td></tr>
+<tr><td>settings.json gains an <code>env</code> block</td><td class="why">It had only permissions and hooks, so the checks debounce had nowhere to live and ran at 20 seconds for all 1,524 edits of a build. Now 120, and the subagent cache TTL is an hour.</td></tr>
+<tr><td>A context ceiling at 250k</td><td class="why"><code>maxTurns</code> does not bound round-trips. A builder pinned at 220 turns recorded 815 round-trips and 613,865 tokens in one dispatch.</td></tr>
+<tr><td><code>scripts/attempt.sh</code></td><td class="why">The escalation ladder had no counter anywhere on disk, so it reset at every compaction and effectively never fired. The first FAIL now re-checks instead of escalating, because a red verdict is wrong about a quarter of the time.</td></tr>
+<tr><td>The verifier gets UNKNOWN</td><td class="why">A judge with no way out invents a verdict, and an invented PASS reads exactly like a real one. It also gets a shorter dispatch: the diff, the lines in scope, and paths. Never the builder's reasoning.</td></tr>
+<tr><td>The Actors grid replaces the persona panel</td><td class="why">Personas cast from a role census score about 54 per cent on interface questions where grounded profiles score 62 and shuffled ones score 52. The grid asks for parameters instead: a job, a situation, a PIAAC band, a Dreyfus stage, an incumbent, two switching forces.</td></tr>
+<tr><td><code>design-directions</code> merges instead of crowning</td><td class="why">Picking the best of four scores 56 per cent above the average, merging scores 70, merging plus one iteration scores 152. Deleting the pick deleted the bracket, the lenses and the byes with it.</td></tr>
+<tr><td>A blind <code>design-critic</code> seat</td><td class="why">It holds Read and nothing else, so it cannot find the sharp original. It judges a blurred capture against the LOUD element the screen grid declares.</td></tr>
+<tr><td><code>scripts/capture.sh</code></td><td class="why">One build hand-wrote 196 probe scripts, 69 opening their own browser, 23 covering two rubric lines, none sharing a helper, all committed into the product. One command now, three files, and iOS, Android and engine paths.</td></tr>
+<tr><td>Product documentation</td><td class="why">The harness documented the run exhaustively and the product not at all. One build shipped this harness's own README verbatim inside a collection app.</td></tr>
+<tr><td><code>scripts/manifest.mjs</code></td><td class="why">Vendored copies were never synced. One target ran a 601-byte <code>dod-gate.sh</code> against the harness's 3,947: the Stop gate enforcing every rubric line was a stub, and nothing said so.</td></tr>
+<tr><td><code>scripts/cost.mjs</code></td><td class="why">Per-seat cost read from transcripts Claude Code already wrote, retroactive to finished runs. Not OpenTelemetry, which collapses every custom seat into one bucket.</td></tr>
+</tbody>
+</table>
+
+<p style="margin-top:18px"><strong>Two claims were tested and lost.</strong></p>
+<ul>
+<li><strong>"The design phase produces flat hierarchy."</strong> A squint test over five shipped screens returned a clear dominant region on four. The object model, the token contract and the deny-list all rested on that claim and were struck. What survived is the declared LOUD, because on the dense screen the critic named a filter chip correctly and had no way to know it was the wrong answer.</li>
+<li><strong>"No seat can see rendered UI."</strong> Every seat could. The build installed Playwright itself and drove it constantly. What was missing was not sight but a shared contract.</li>
+</ul>
+
+<p style="margin-top:16px"><strong>Before you trial this in a project</strong>, sync it, or the run
+exercises the old harness and reads as this one failing:</p>
+<pre><code>node scripts/manifest.mjs check ~/Claude/&lt;target&gt;
+node scripts/manifest.mjs sync  ~/Claude/&lt;target&gt; --adopt</code></pre>
+</div>
 
 <ol class="toc">
   <li><a href="#what">What Forge is</a></li>
@@ -311,6 +370,24 @@ needs only for the lead-run design-directions workflow.</p>
  .ss{font:12px system-ui,sans-serif;fill:var(--dim);}
  .fl{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar);}
  .sk{stroke:#9a958a;stroke-width:1.5;fill:none;stroke-dasharray:4 4;marker-end:url(#ar);}
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 <rect class="bx" x="80" y="8"  width="200" height="44"/><text class="tt" x="180" y="27" text-anchor="middle">1 Intake</text><text class="ss" x="180" y="43" text-anchor="middle">three questions, BRIEF.md</text>
 <rect class="bx" x="80" y="82" width="200" height="44"/><text class="tt" x="180" y="101" text-anchor="middle">2 Size</text><text class="ss" x="180" y="117" text-anchor="middle">router returns S, M, or L</text>
@@ -359,6 +436,24 @@ entirely.</figcaption>
  .an{font:600 13px system-ui,sans-serif;fill:var(--ink);}
  .am{font:600 11px ui-monospace,Menlo,monospace;fill:var(--accent);}
  .at{font:11px ui-monospace,Menlo,monospace;fill:var(--dim);}
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 <rect class="abx" x="4" y="4" width="352" height="54"/><text class="an" x="16" y="24">router</text><text class="am" x="300" y="24">haiku</text><text class="at" x="16" y="44">Read, Grep, Glob · sizes the goal, nothing else</text>
 <rect class="abx" x="4" y="66" width="352" height="54"/><text class="an" x="16" y="86">scout</text><text class="am" x="290" y="86">sonnet</text><text class="at" x="16" y="106">WebSearch, WebFetch, Read · market and obligations</text>
@@ -389,6 +484,24 @@ one line in <code>RUNLOG.md</code>.</p>
  .bt{font:600 13px system-ui,sans-serif;fill:var(--ink);}
  .bs{font:11px system-ui,sans-serif;fill:var(--dim);}
  .bf{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar2);}
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 <rect class="bbx" x="90" y="6" width="180" height="46"/><text class="bt" x="180" y="26" text-anchor="middle">builder takes a slice</text><text class="bs" x="180" y="42" text-anchor="middle">from PLAN.md, design bundle</text>
 <rect class="bbx" x="90" y="88" width="180" height="46"/><text class="bt" x="180" y="108" text-anchor="middle">green slice commits</text><text class="bs" x="180" y="124" text-anchor="middle">evidence.sh records proof</text>
@@ -422,6 +535,24 @@ softened to reach PASS.</figcaption>
  .he{font:600 12px ui-monospace,Menlo,monospace;fill:var(--ink);}
  .hs{font:11px system-ui,sans-serif;fill:var(--dim);}
  .hblock{font:600 10px system-ui,sans-serif;fill:var(--gate);}
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 <line class="hln" x1="26" y1="16" x2="26" y2="548"/>
 <circle class="hdot" cx="26" cy="30" r="5"/><text class="he" x="44" y="26">SessionStart → rehydrate.sh</text><text class="hs" x="44" y="42">injects RESUME, rubric, arming reminder</text>
@@ -466,6 +597,24 @@ session is disposable; these files are not.</p>
  .rt{font:600 13px system-ui,sans-serif;fill:var(--ink);}
  .rs{font:11px system-ui,sans-serif;fill:var(--dim);}
  .rf{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar3);}
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 <rect class="rbx" x="30" y="6" width="300" height="44"/><text class="rt" x="180" y="26" text-anchor="middle">rate limit kills the turn mid-slice</text><text class="rs" x="180" y="42" text-anchor="middle">StopFailure fires</text>
 <rect class="rbx" x="30" y="80" width="300" height="44"/><text class="rt" x="180" y="100" text-anchor="middle">checkpoint.sh stamps RESUME.md</text><text class="rs" x="180" y="116" text-anchor="middle">phase, slice, next action survive on disk</text>
@@ -500,6 +649,24 @@ them. Six patterns, mapped to the phases that use them:</p>
  .pp{font:600 11px ui-monospace,Menlo,monospace;fill:var(--accent);}
  .pd{font:11px system-ui,sans-serif;fill:var(--dim);}
  .pl{stroke:var(--line);stroke-width:1;}
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 <text class="pn" x="4" y="20">classify-and-act</text><text class="pp" x="250" y="20">SIZE, VERIFY</text><text class="pd" x="4" y="36">the router's letter; the escalation ladder routing by fail count</text>
 <line class="pl" x1="4" y1="48" x2="356" y2="48"/>
@@ -525,6 +692,24 @@ verification and, when the defect count is unknown, the sweep.</figcaption>
  .st{font:600 13px system-ui,sans-serif;fill:var(--ink);}
  .ssz{font:11px system-ui,sans-serif;fill:var(--dim);}
  .sf{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar4);}
+
+.changed{border:1px solid #c6ced6;border-left:3px solid #c4451b;padding:20px 22px;margin:28px 0 34px;background:#fbfcfd}
+.changed h2{margin:0 0 4px;font-size:20px}
+.changed .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#68747f;margin:0 0 14px}
+.changed table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 0}
+.changed th{text-align:left;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#68747f;padding:8px 10px 7px;border-bottom:1px solid #c6ced6;white-space:nowrap}
+.changed td{padding:10px;border-bottom:1px solid #dbe1e7;vertical-align:top}
+.changed td:first-child{white-space:nowrap;font-weight:600}
+.changed .why{color:#3d4854}
+.changed ul{margin:10px 0 0;padding-left:18px}
+.changed li{margin-bottom:7px}
+@media (prefers-color-scheme:dark){
+  .changed{background:#171d24;border-color:#2c353e;border-left-color:#f0713f}
+  .changed .when,.changed th{color:#7d8a96}
+  .changed th{border-bottom-color:#2c353e}
+  .changed td{border-bottom-color:#222a32}
+  .changed .why{color:#b3bdc7}
+}
 </style>
 <rect class="sbx" x="105" y="6" width="150" height="40"/><text class="st" x="180" y="30" text-anchor="middle">router reads the brief</text>
 <rect class="sbx" x="4" y="96" width="110" height="118"/><text class="st" x="59" y="118" text-anchor="middle">S</text><text class="ssz" x="59" y="138" text-anchor="middle">one feature,</text><text class="ssz" x="59" y="152" text-anchor="middle">one evening</text><text class="ssz" x="59" y="176" text-anchor="middle">no scout, no panel,</text><text class="ssz" x="59" y="190" text-anchor="middle">no worktree, no workflows,</text><text class="ssz" x="59" y="204" text-anchor="middle">designer optional, deployed</text>
@@ -615,7 +800,7 @@ accept the trust prompt</td></tr>
 <h2 id="glossary">11. Glossary and customization</h2>
 <dl>
 <dt>Lead</dt><dd>the main Claude Code session driving a forge run.</dd>
-<dt>Seat</dt><dd>one of the seven forge subagents, each with a mandate and never-rules.</dd>
+<dt>Seat</dt><dd>one of the eight forge subagents, each with a mandate and never-rules.</dd>
 <dt>Context window</dt><dd>a session's finite working memory; everything read or produced accumulates there.</dd>
 <dt>Hook</dt><dd>a script the platform runs at a lifecycle point; exit 2 can block the action.</dd>
 <dt>Skill</dt><dd>knowledge loaded on demand; costs no context until used.</dd>
@@ -628,7 +813,27 @@ accept the trust prompt</td></tr>
 <dt>Greenlight</dt><dd>the one human gate: plan, rubric, and screens approved together, once.</dd>
 <dt>Arm, /goal</dt><dd>the native completion condition you paste at approval; a fresh model re-checks it after every turn.</dd>
 <dt>Ultracode</dt><dd>a session mode where Claude orchestrates workflows by default; reserved for L builds.</dd>
+<dt>Actors grid</dt><dd>BRIEF.md's table of actor-job pairs. Replaces the role census and the persona panel. Every cell carries a provenance tag, and only the assumed ones reach you at the gate.</dd>
+<dt>Band, stage</dt><dd>two separate proficiency axes on an actor row. Band is PIAAC digital skill (Level 3 is five per cent of adults); stage is Dreyfus domain expertise. A Level 3 domain novice needs a different interface from a Level 1 domain expert, which is why they never collapse into one number.</dd>
+<dt>LOUD, QUIET</dt><dd>the one element on a route that should pull the eye, and the region that goes quiet to pay for it. Declared in SCREENS.md so the blind critic can be wrong about it.</dd>
+<dt>Squint</dt><dd>a capture reduced until only mass and contrast survive. A card-soup screen collapses into an undifferentiated grid; unblurred, the same screen reads as clean and modern to a model.</dd>
+<dt>Capture triple</dt><dd>what every capture writes: the frame, an element tree with computed styles, and a meta with the command, the pins and a sha256. Seats pass ids, never bytes.</dd>
+<dt>Anchor</dt><dd>the check that a page actually painted before anything about it is judged. A blank mount ruled on as a design difference produces confident prose about a screen that never existed.</dd>
+<dt>Holdout</dt><dd>the verifier's acceptance suite, written at the greenlight and never shown to the builder. Adding more visible tests measurably widens the gap it exists to close.</dd>
+<dt>Drift</dt><dd>the gap between this harness and the copy a project is running. One target ran a 601-byte Stop gate against a 3,947-byte original.</dd>
 </dl>
+
+<h3>The commands worth knowing</h3>
+<table class="changed" style="border:0;border-left:0;padding:0;background:none">
+<tbody>
+<tr><td><code>bash scripts/selftest.sh</code></td><td class="why">the regression suite, 166 assertions. Run it after every Claude Code update.</td></tr>
+<tr><td><code>node scripts/seat-check.mjs</code></td><td class="why">every seat's prose against its tool grant. It once caught a blind critic holding Bash, which made it blind by request rather than by grant.</td></tr>
+<tr><td><code>node scripts/cost.mjs --all</code></td><td class="why">per-seat cost, round-trips and peak context, read from transcripts that already exist. Retroactive to runs that finished months ago.</td></tr>
+<tr><td><code>node scripts/manifest.mjs check &lt;target&gt;</code></td><td class="why">which harness a project is actually running. Never reports clean while anything differs.</td></tr>
+<tr><td><code>bash scripts/attempt.sh state &lt;slice&gt;</code></td><td class="why">how many times a slice has failed and which rung that puts it on.</td></tr>
+<tr><td><code>bash scripts/capture.sh &lt;id&gt; &lt;url&gt;</code></td><td class="why">one capture, three files. Add <code>--platform ios|android|engine</code> off the web.</td></tr>
+</tbody>
+</table>
 
 <h3>Which file to edit for which change</h3>
 <table>

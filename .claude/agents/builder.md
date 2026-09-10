@@ -26,6 +26,12 @@ You build for the Forge pipeline. One dispatch, one slice from .forge/PLAN.md.
   to the product's scripts/. One build shipped 196 hand-written probes, 69 of
   them opening their own chromium, 23 of them covering two rubric lines, none
   sharing a helper, and every one committed into the product.
+- Write the docs this slice owes as part of the slice, and keep the four kinds
+  apart: a tutorial gets a stranger to one working thing, a how-to answers one
+  question for someone already running, a reference is generated where a
+  generator exists, an explanation says why. Never write the harness's README
+  into the product; one build shipped Forge's own scaffold README verbatim, so
+  the product told strangers it had seven seats and a greenlight.
 - Commit when the slice is green. Record evidence lines with
   scripts/evidence.sh.
 - When a verifier defect list comes back, fix exactly those defects first.

@@ -293,6 +293,47 @@ assert d.get("env",{}).get("FORGE_CHECKS_DEBOUNCE"), "no FORGE_CHECKS_DEBOUNCE"
 assert d.get("subagentPromptCacheTtl"), "no subagentPromptCacheTtl"
 PY
 
+# README carries counts, and counts break on every pipeline change. Before this
+# was enforced it listed six skills where seven existed and told the operator to
+# fill three slots that were already written. Prose discipline is what failed,
+# so the fix is not more discipline.
+SEATS=$(ls -1 "$ROOT/.claude/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')
+WFLOWS=$(ls -1 "$ROOT/.claude/workflows"/*.js 2>/dev/null | wc -l | tr -d ' ')
+SKILLS=$(ls -1d "$ROOT/.claude/skills"/*/ 2>/dev/null | wc -l | tr -d ' ')
+HOOKS=$(python3 -c "
+import json;d=json.load(open('$ROOT/.claude/settings.json'))
+print(sum(len(e.get('hooks',[])) for arr in d['hooks'].values() for e in arr))")
+word () { case "$1" in 3) echo three ;; 7) echo seven ;; 8) echo eight ;; 9) echo nine ;; *) echo "$1" ;; esac; }
+grep -qi "$(word $SEATS) seats" "$ROOT/README.md" \
+  && ok "README's seat count matches the filesystem ($SEATS)" \
+  || fail "README does not say $(word $SEATS) seats, but $SEATS exist"
+grep -qi "$(word $WFLOWS) fan-out\|$(word $WFLOWS) workflows" "$ROOT/README.md" \
+  && ok "README's workflow count matches the filesystem ($WFLOWS)" \
+  || fail "README does not match the $WFLOWS workflows on disk"
+grep -qi "$(word $HOOKS) hooks" "$ROOT/README.md" \
+  && ok "README's hook count matches settings.json ($HOOKS)" \
+  || fail "README does not say $(word $HOOKS) hooks, but $HOOKS are registered"
+MISSING=""
+for d in "$ROOT/.claude/skills"/*/; do
+  n=$(basename "$d")
+  grep -q "$n" "$ROOT/README.md" || MISSING="$MISSING $n"
+done
+[ -z "$MISSING" ] \
+  && ok "README lists every skill directory ($SKILLS)" \
+  || fail "README omits skill(s):$MISSING"
+
+# The harness README once shipped verbatim inside a product, which told a
+# stranger cloning a collection app that it had seven seats and a greenlight.
+grep -qi "never be copied into a target project\|not the README of anything Forge" "$ROOT/README.md" \
+  && ok "the README says it is not the product's README" \
+  || fail "nothing stops the harness README travelling into a product"
+grep -qi "harness's README into the product\|scaffold README" "$ROOT/.claude/agents/builder.md" \
+  && ok "the builder is told not to ship the harness README" \
+  || fail "the builder may ship the harness README again"
+grep -qi "TUTORIAL\|tutorial takes a stranger" "$ROOT/.claude/skills/standards/SKILL.md" \
+  && ok "the four documentation kinds are named and kept apart" \
+  || fail "documentation has no shape, so it collapses into one file"
+
 # 196 hand-written probes shipped inside one product, 69 of them opening their
 # own chromium, 23 covering two rubric lines, none sharing a helper, all
 # committed. The contract is the floor that collapses them, and it only works if

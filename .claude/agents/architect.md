@@ -58,6 +58,14 @@ Produce three files and nothing else.
   and listed at the greenlight.
 - Three sections: Function, Craft, Release. Craft references the approved
   screens and the standards skill. Release matches the done level from intake.
+- Release carries the documentation the done level owes, per the standards
+  skill, and each line names its check. A stranger reaching a running app from
+  README alone is a command sequence in a clean checkout, not an assertion.
+  Every core-loop screen having a help entry is a two-way diff. Every documented
+  command existing in the build is a grep of the doc's code fences against the
+  route manifest and the package scripts. Docs are slice work: put the doc lines
+  in the Closes list of the slice that builds the thing they document, never in
+  a documentation slice at the end.
 - Release includes one line per fired compliance trigger, each naming its
   artifact. Triggers that do not fire add nothing.
 - A disqualifier list: placeholder copy, default favicon, unstyled empty or

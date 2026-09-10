@@ -209,9 +209,9 @@ scripts/selftest.sh</code></pre>
 <code>claude-design: https://api.anthropic.com/v1/design/mcp (HTTP) - ✔ Connected</code>
 and a selftest ending in <code>selftest: all checks passed</code>. Inside a
 session, <code>/mcp</code> should list claude-design, <code>/agents</code>
-should list the seven seats, and typing <code>/</code> should offer
-<code>forge</code> plus the four workflow commands (persona-panel,
-verify-fanout, design-tournament, defect-sweep).</p></li>
+should list the eight seats, and typing <code>/</code> should offer
+<code>forge</code> plus the three workflow commands (design-directions,
+verify-fanout, defect-sweep).</p></li>
 </ol>
 
 <div class="warn"><strong>After any Claude Code update</strong>, run
@@ -299,7 +299,7 @@ and <code>/effort</code> switch mid-session, so adjust at the greenlight if
 the router disagrees with you. An L verdict adds its own note there
 recommending ultracode for the build. Second, ultracode never opens an S or
 M run: it exists to orchestrate workflows at scale, which S never uses and M
-needs only for the lead-run persona panel.</p>
+needs only for the lead-run design-directions workflow.</p>
 
 <figure>
 <svg viewBox="0 0 360 700" role="img" aria-label="The forge pipeline, nine phases with the single human gate marked between plan and build">
@@ -344,7 +344,7 @@ entirely.</figcaption>
 <tr><td>Intake</td><td>the lead</td><td>session model</td><td>.forge/BRIEF.md</td></tr>
 <tr><td>Size</td><td>router seat</td><td>haiku</td><td>size and reason, recorded by the lead</td></tr>
 <tr><td>Scout (M, L)</td><td>scout seat</td><td>sonnet</td><td>Research section of BRIEF.md</td></tr>
-<tr><td>Design (M, L; proposed on deployed S, kept or struck at the gate)</td><td>lead runs the persona panel, then the designer seat</td><td>session model</td><td>Panel section, then .forge/DESIGN.md with Claude Design links</td></tr>
+<tr><td>Design (M, L; proposed on deployed S, kept or struck at the gate)</td><td>scout writes the Actors grid, lead runs design-directions, then the designer seat, then the blind design-critic</td><td>session model</td><td>Actors grid in BRIEF.md, then .forge/SCREENS.md and .forge/DESIGN.md with Claude Design links</td></tr>
 <tr><td>Plan</td><td>architect seat</td><td>session model</td><td>.forge/PLAN.md, .forge/DOD.md</td></tr>
 <tr><td>Greenlight</td><td>you</td><td></td><td>.forge/GREENLIGHT.md, then .forge/ARMED on approval</td></tr>
 <tr><td>Build</td><td>builder seat, one slice per dispatch</td><td>sonnet</td><td>code, commits, .forge/EVIDENCE.md lines</td></tr>
@@ -368,7 +368,7 @@ entirely.</figcaption>
 <rect class="abx" x="4" y="314" width="352" height="54"/><text class="an" x="16" y="334">verifier</text><text class="am" x="284" y="334">inherit</text><text class="at" x="16" y="354">Read, Grep, Glob, Bash, WebFetch · rules with evidence, never edits</text>
 <rect class="abx" x="4" y="376" width="352" height="54"/><text class="an" x="16" y="396">finisher</text><text class="am" x="290" y="396">sonnet</text><text class="at" x="16" y="416">Read, Bash · deploys, launch assets, REPORT.md</text>
 </svg>
-<figcaption>The seven seats. <code>inherit</code> means the session model:
+<figcaption>The eight seats. <code>inherit</code> means the session model:
 the judgment seats are as strong as the day you opened the session. No seat
 carries the Agent tool; every fan-out belongs to the lead.</figcaption>
 </figure>
@@ -503,11 +503,11 @@ them. Six patterns, mapped to the phases that use them:</p>
 </style>
 <text class="pn" x="4" y="20">classify-and-act</text><text class="pp" x="250" y="20">SIZE, VERIFY</text><text class="pd" x="4" y="36">the router's letter; the escalation ladder routing by fail count</text>
 <line class="pl" x1="4" y1="48" x2="356" y2="48"/>
-<text class="pn" x="4" y="72">fan-out-and-synthesize</text><text class="pp" x="250" y="72">DESIGN, BUILD</text><text class="pd" x="4" y="88">persona-panel; parallel builders in worktrees on L</text>
+<text class="pn" x="4" y="72">fan-out-and-synthesize</text><text class="pp" x="250" y="72">DESIGN, BUILD</text><text class="pd" x="4" y="88">parallel builders in worktrees on L, when scopes are disjoint</text>
 <line class="pl" x1="4" y1="100" x2="356" y2="100"/>
 <text class="pn" x="4" y="124">adversarial verification</text><text class="pp" x="250" y="124">VERIFY</text><text class="pd" x="4" y="140">the verifier seat; verify-fanout, one agent per rubric line on L</text>
 <line class="pl" x1="4" y1="152" x2="356" y2="152"/>
-<text class="pn" x="4" y="176">generate-and-filter</text><text class="pp" x="250" y="176">DESIGN</text><text class="pd" x="4" y="192">design-tournament's first half: five directions, keep three</text>
+<text class="pn" x="4" y="176">generate-and-merge</text><text class="pp" x="250" y="176">DESIGN</text><text class="pd" x="4" y="192">design-directions: five per-goal strata, merged into one</text>
 <line class="pl" x1="4" y1="204" x2="356" y2="204"/>
 <text class="pn" x="4" y="228">tournament</text><text class="pp" x="250" y="228">DESIGN</text><text class="pd" x="4" y="244">its second half: pairwise judging, compared never scored</text>
 <line class="pl" x1="4" y1="256" x2="356" y2="256"/>
@@ -528,7 +528,7 @@ verification and, when the defect count is unknown, the sweep.</figcaption>
 </style>
 <rect class="sbx" x="105" y="6" width="150" height="40"/><text class="st" x="180" y="30" text-anchor="middle">router reads the brief</text>
 <rect class="sbx" x="4" y="96" width="110" height="118"/><text class="st" x="59" y="118" text-anchor="middle">S</text><text class="ssz" x="59" y="138" text-anchor="middle">one feature,</text><text class="ssz" x="59" y="152" text-anchor="middle">one evening</text><text class="ssz" x="59" y="176" text-anchor="middle">no scout, no panel,</text><text class="ssz" x="59" y="190" text-anchor="middle">no worktree, no workflows,</text><text class="ssz" x="59" y="204" text-anchor="middle">designer optional, deployed</text>
-<rect class="sbx" x="126" y="96" width="110" height="118"/><text class="st" x="181" y="118" text-anchor="middle">M</text><text class="ssz" x="181" y="138" text-anchor="middle">multi-screen,</text><text class="ssz" x="181" y="152" text-anchor="middle">one stack</text><text class="ssz" x="181" y="176" text-anchor="middle">scout, persona panel,</text><text class="ssz" x="181" y="190" text-anchor="middle">designer, single</text><text class="ssz" x="181" y="204" text-anchor="middle">builder</text>
+<rect class="sbx" x="126" y="96" width="110" height="118"/><text class="st" x="181" y="118" text-anchor="middle">M</text><text class="ssz" x="181" y="138" text-anchor="middle">multi-screen,</text><text class="ssz" x="181" y="152" text-anchor="middle">one stack</text><text class="ssz" x="181" y="176" text-anchor="middle">scout, Actors grid,</text><text class="ssz" x="181" y="190" text-anchor="middle">designer, single</text><text class="ssz" x="181" y="204" text-anchor="middle">builder</text>
 <rect class="sbx" x="248" y="96" width="110" height="118"/><text class="st" x="303" y="118" text-anchor="middle">L</text><text class="ssz" x="303" y="138" text-anchor="middle">parallel streams</text><text class="ssz" x="303" y="162" text-anchor="middle">all of M, plus worktree</text><text class="ssz" x="303" y="176" text-anchor="middle">builders, verify-fanout,</text><text class="ssz" x="303" y="190" text-anchor="middle">defect-sweep, ultracode</text><text class="ssz" x="303" y="204" text-anchor="middle">session recommended</text>
 <line class="sf" x1="120" y1="46" x2="65" y2="92"/>
 <line class="sf" x1="180" y1="46" x2="181" y2="92"/>

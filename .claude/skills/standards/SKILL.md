@@ -13,10 +13,16 @@ holds them.
 - One line per property: `- [ ] <ID> | <property> | check: <command>`, or
   `judge: <what, threshold>`, or `operator: <what the human proves>`, at most
   240 characters. The last line is `- [ ] V0 | final verifier PASS | rule`.
-- A check exits 0 for pass and 1 for fail. Any other exit is could-not-run,
-  which rules UNKNOWN and is never green. Wrap a tool whose exit codes differ:
-  `grep -q` exits 1 on no match, which is a pass for a "nothing found" line,
-  so write `! grep -q ...` or a script in .forge/checks/<ID>.sh.
+- A check exits 0 when the property holds. Any other exit is a FAIL, except
+  126, 127 (not found), 69 (a blocked toolchain) and a timeout, which mean the
+  check could not run: UNKNOWN, never green. For a "nothing found" line write
+  `! grep -q ...`. Checks run under pipefail, so `cmd | tail` fails when cmd
+  fails; a pipe into `grep -q` keeps grep's verdict. Never pipe into `head`,
+  which hides the exit of the command it reads.
+- Operator lines are what only the human can prove: a domain they own, a paid
+  account, a store submission. No slice closes them and they never hold the
+  final PASS back. The report lists each one with the command that records it:
+  `node scripts/dod-check.mjs --operator <ID> "<proof>"`.
 - Checks run from the armed commit through scripts/dod-check.mjs. Write them
   to run from the project root on a fresh checkout, against a URL or a
   build, never against the builder's memory of one.

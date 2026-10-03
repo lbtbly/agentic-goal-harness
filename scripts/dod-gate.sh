@@ -25,7 +25,8 @@ cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 # fallback appends a second line and the arithmetic below dies on "0\n0". Keep
 # the count, drop the status, then insist on a number.
 num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
-LEFT=$(num "$(grep -c '^- \[ \]' .forge/DOD.md 2>/dev/null || true)")
+# Operator lines are the human's to prove after the run; they never hold it.
+LEFT=$(num "$(grep '^- \[ \]' .forge/DOD.md 2>/dev/null | grep -vcE '[|] operator(:.*)?$' || true)")
 if [ "$LEFT" -eq 0 ]; then
   # Nothing unchecked. The run is done here, so retire any park record rather
   # than leaving it to greet the next session with numbers that are now false.
@@ -84,7 +85,7 @@ fi
 rm -f .forge/PARKED
 {
   echo "forge gate: $LEFT rubric line(s) unchecked. Not done. Next unchecked:"
-  grep '^- \[ \]' .forge/DOD.md | head -5
+  grep '^- \[ \]' .forge/DOD.md | grep -vE '[|] operator(:.*)?$' | head -5
   echo "Continue the run: relaunch the build workflow for open slices, or verify."
   echo "V0 closes only through the final verifier. Never soften a line."
   echo "Nothing left to do? Stop again and the gate yields, recording the park."

@@ -141,6 +141,55 @@ const PASSV = { verdict: 'PASS', failing: [], summary: 'ok' }
   const big = await sim('parallel-4', { slices: ['2', '3', '4', '5'].map(id => sl(id, { group: 'g' })), size: 'M' }, c => c.agentType === 'builder' ? { status: 'done', summary: 'b' } : c.label && c.label.startsWith('gate') ? { verdict: 'PASS', summary: 'g' } : PASSV)
   check(!big.calls.some(c => c.isolation) && big.out.done, 'a group over the cap of three runs serially')
 }
+// 10c. A merge that fails its gate goes up the ladder on the main tree; a
+// merge gate that could not run is blocked; worktrees get env files and the
+// pinned install; fix rounds record a base; the gate asks for a long timeout.
+{
+  const a = sl('2', { group: 'g' }), b = sl('3', { group: 'g' })
+  let mergeTries = 0
+  const r = await sim('merge-fail', { slices: [a, b], size: 'M', checks: { install: 'pnpm install --frozen-lockfile' } }, c => {
+    if (c.label === 'base group g') return { sha: 'deadbeef', root: '/proj' }
+    if (c.agentType === 'builder') return { status: 'done', summary: 'b', branch: c.isolation ? 'forge-slice-x' : undefined }
+    if (c.label === 'merge 2') { mergeTries++; return { verdict: 'FAIL', summary: 'test failed after merge' } }
+    if (c.label === 'merge 3') return { verdict: 'PASS', summary: 'g' }
+    if (c.label === 'gate 2') return { verdict: 'PASS', summary: 'g' }
+    return PASSV
+  })
+  const after = r.calls.filter(c => c.label && c.label.startsWith('build 2') && !c.isolation)
+  check(after.length === 1 && after[0].prompt.includes('test failed after merge') && r.out.done, 'a merge gate FAIL continues the ladder on the main tree, then goes green')
+  const wt = r.calls.find(c => c.isolation === 'worktree')
+  check(wt.prompt.includes('/proj') && wt.prompt.includes('pnpm install --frozen-lockfile'), 'a worktree builder copies env files from the main tree and runs the pinned install')
+  check(r.calls.find(c => c.label === 'merge 2').prompt.includes('attempt.mjs base 2') && r.calls.find(c => c.label === 'merge 2').prompt.includes('commit.sh --now'), 'each member commits main and records its own pre-merge base')
+  check(r.calls.filter(c => c.label && c.label.startsWith('gate')).every(c => c.prompt.includes('longest timeout')), 'every gate asks for the longest Bash timeout')
+  const u = await sim('merge-unknown', { slices: [a, b], size: 'M' }, c => {
+    if (c.label === 'base group g') return { sha: 'deadbeef', root: '/proj' }
+    if (c.agentType === 'builder') return { status: 'done', summary: 'b', branch: 'x' }
+    if (c.label === 'merge 2') return { verdict: 'UNKNOWN', summary: 'test could not run' }
+    return { verdict: 'PASS', summary: 'g', failing: [] }
+  })
+  check(u.out.halted && u.out.halted.status === 'blocked', 'a merge gate that could not run blocks, never climbs the ladder')
+  let finals = 0
+  const f = await sim('fix-base', { slices: [sl('1')], size: 'S' }, c => {
+    if (c.agentType === 'builder') return { status: 'done', summary: 'b' }
+    if (c.label === 'gate 1' || c.label === 'gate fix') return { verdict: 'PASS', summary: 'g' }
+    if (c.label === 'verify final') { finals++; return finals === 1 ? { verdict: 'FAIL', failing: ['F1'], judgeFailing: [], summary: 'x' } : PASSV }
+    return PASSV
+  })
+  check(f.calls.find(c => c.label && c.label.startsWith('fix ')).prompt.includes('attempt.mjs base fix'), 'a fix round records its base so the gate can scan what it adds')
+}
+// 10d. A group stops merging at its first member that does not go green, so
+// rewinding that member can never take a later sibling's code with it.
+{
+  const a = sl('2', { group: 'g' }), b = sl('3', { group: 'g' })
+  const r = await sim('merge-stuck', { slices: [a, b], size: 'M' }, c => {
+    if (c.label === 'base group g') return { sha: 'deadbeef', root: '/proj' }
+    if (c.agentType === 'builder') return { status: 'done', summary: 'b', branch: 'x' }
+    if (c.label === 'merge 2' || c.label === 'gate 2') return { verdict: 'FAIL', summary: 'red' }
+    return PASSV
+  })
+  check(r.out.halted && r.out.halted.id === '2' && r.out.halted.status === 'stuck', 'a member that fails after its merge climbs to stuck')
+  check(!r.calls.some(c => c.label === 'merge 3') && r.out.slices.some(x => x.id === '3' && x.status === 'unmerged'), 'later members stay unmerged and open, never merged onto a red tree')
+}
 // 10b. A designed run gets the blind squint before the final verify, once.
 {
   let finals = 0

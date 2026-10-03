@@ -72,25 +72,36 @@ for (const k of ['typecheck', 'lint', 'build', 'test']) {
   else if (r.state === 'unknown') note(unknown, k, r.tail)
 }
 
-// 2. Suppressions added by this slice. A green suite that got green by
-// switching itself off is not green. Allowed patterns live one regex per line
-// in .forge/overrides/suppress-allow and only ever widen what is permitted.
+// 2. Suppressions added since the slice's base, committed or not, new files
+// included. A green suite that got green by switching itself off is not
+// green. Allowed patterns come from the ARMED commit only, one regex per line
+// in .forge/overrides/suppress-allow: a builder cannot widen them mid-run.
+// A commit refusal means the history the scan reads has stopped moving, so
+// the gate cannot vouch for anything until it is cleared.
+if (existsSync(join(project, '.forge/COMMIT-BLOCKED'))) {
+  note(unknown, 'commits', readFileSync(join(project, '.forge/COMMIT-BLOCKED'), 'utf8').split('\n').slice(0, 3).join(' / '))
+}
 let base = null
-if (!FIX) try { base = (JSON.parse(readFileSync(join(project, '.forge/ATTEMPTS.json'), 'utf8'))[slice] || {}).base } catch {}
+try { base = (JSON.parse(readFileSync(join(project, '.forge/ATTEMPTS.json'), 'utf8'))[FIX ? 'fix' : slice] || {}).base } catch {}
 if (base) {
-  const d = git(['diff', '-U0', `${base}..HEAD`, '--', '.', ':(exclude).forge'], { cwd })
+  const d = git(['diff', '-U0', base, '--', '.', ':(exclude).forge'], { cwd })
+  const u = git(['ls-files', '--others', '--exclude-standard', '--', '.', ':(exclude).forge'], { cwd })
   if (d.state === 'unusable') note(unknown, 'suppression-scan', d.err)
   else if (d.state === 'ok') {
-    const SUPPRESS = /eslint-disable|@ts-nocheck|@ts-ignore|@ts-expect-error|\b(?:it|test|describe)\.(?:skip|only)\(|\bx(?:it|describe)\(|\|\|\s*true\b/
-    const allow = existsSync(join(project, '.forge/overrides/suppress-allow'))
-      ? readFileSync(join(project, '.forge/overrides/suppress-allow'), 'utf8').split('\n').filter(l => l && !l.startsWith('#')).map(l => new RegExp(l))
-      : []
-    const hits = d.out.split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++') && SUPPRESS.test(l) && !allow.some(a => a.test(l)))
+    // `|| true` counts only where it swallows a check, not in a setup script.
+    const SUPPRESS = /eslint-disable|@ts-nocheck|@ts-ignore|@ts-expect-error|\b(?:it|test|describe)\.(?:skip|only)\(|\bx(?:it|describe)\(|(?:test|lint|tsc|typecheck|vitest|jest|eslint|pytest|playwright)[^\n]*\|\|\s*true\b/
+    const ap = pinned('.forge/overrides/suppress-allow')
+    const allow = ap.text ? ap.text.split('\n').filter(l => l && !l.startsWith('#')).map(l => new RegExp(l)) : []
+    const added = d.out.split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++'))
+    for (const f of (u.state === 'ok' ? u.out.split('\n').filter(Boolean) : [])) {
+      try { added.push(...readFileSync(join(cwd, f), 'utf8').split('\n').map(l => `+${l}`)) } catch {}
+    }
+    const hits = added.filter(l => SUPPRESS.test(l) && !allow.some(a => a.test(l)))
     console.log(`suppress  ${hits.length ? 'FAIL' : 'PASS'}  ${hits.length} added`)
     if (hits.length) note(failures, 'suppression', hits.slice(0, 8).join('\n'))
   }
-} else if (!FIX) {
-  console.log('suppress  SKIPPED  no base commit recorded for this slice')
+} else {
+  console.log(`suppress  SKIPPED  no base commit recorded for ${FIX ? 'this fix round' : 'this slice'}`)
 }
 
 // 3. The slice's own rubric lines, from the armed commit. In a worktree this

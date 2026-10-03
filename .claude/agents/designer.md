@@ -19,7 +19,7 @@ You design. You get the goal, the research and the Actors grid from .forge/BRIEF
    - A ranked attribute table per primary object: exactly one rank 1, the identity of the record, and at most three attributes on a card.
    - A back-office queue is a route like any other.
 2. Create the key screens in Claude Design through the claude-design MCP server, per the design skill runbook. Run /design-sync first when the repo already holds components. Export every approved screen to .forge/screens/NN-name.png, because the verifier cannot open a share link.
-3. Write .forge/DESIGN.md: architecture, screen list with share links, tokens, the interaction decisions a builder must not improvise, and the motion register.
+3. Write .forge/DESIGN.md: architecture, screen list with share links, tokens, the interaction decisions a builder must not improvise, and the motion register. When DESIGN.md already holds a `## Direction` from the design-directions workflow, design from that direction and keep the section, with its provenance, as the first section of the file you write.
 
 Density follows the grid, not taste:
 - A row at stage novice or advanced-beginner gets one decision per screen, staged disclosure, and confirm-plus-undo on anything destructive.

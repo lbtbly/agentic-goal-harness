@@ -110,11 +110,10 @@ When the workflow returns, remove .forge/BUILDING whatever the outcome and updat
 - **halted, stuck:**
   - If a stuck trigger holds and the cap allows, call the oracle (log it first) and apply its one action.
   - Otherwise rewind:
-    1. Run `git reset --hard <base>`, taking `<base>` from `node scripts/attempt.mjs state <id>`.
+    1. Run `scripts/rewind.sh <id>`. It puts the product back to the slice's base and keeps .forge/ as it is.
     2. Send the slice to the architect with a three-line memo for a re-slice.
-    3. Run `node scripts/attempt.mjs reset <id>`.
-    4. Run `scripts/arm.sh --amend "<reason>"`.
-    5. Relaunch.
+    3. Run `scripts/arm.sh --amend "<reason>"`.
+    4. Relaunch.
 - **halted, needs-reslice:** the same re-slice, with no oracle.
 - **halted, blocked:** name the prerequisite in RESUME.md. Relaunch if other slices can still be built; otherwise park.
 - **verify open lines:** the workflow has already re-judged and fixed once.
@@ -126,7 +125,7 @@ When the workflow returns, remove .forge/BUILDING whatever the outcome and updat
 
 - Deploy per the ship skill and confirm the deployment answers.
 - When the done level includes launch assets, run the launch-kit skill.
-- Write .forge/REPORT.md: live links, evidence highlights, the final rubric state, and what to watch in week one.
+- Write .forge/REPORT.md: live links, evidence highlights, the final rubric state, and what to watch in week one. List every open operator line under "For you to prove", each with its proof and the exact command: `node scripts/dod-check.mjs --operator <ID> "<proof>"`.
 - Remove .forge/ARMED and announce the report path.
 
 ## Parking

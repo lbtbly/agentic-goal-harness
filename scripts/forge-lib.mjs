@@ -76,35 +76,67 @@ export function unparsedBoxes (text) {
 }
 
 // ## Checks
-// - typecheck: <command>
-// ## Slice 3: <name>
-// Tier: standard | light      Confidence: high | low      Group: 3
-// Milestone: yes              Scope: <routes, modules>; shared: none
-// Closes: F1, F2, C3
+// - typecheck: <command>        (also lint, test, build, install, holdout)
+// ## Slice 3: <name>            (## to ####; ": name" or " - name")
+// Tier: standard | light        Confidence: high | low      Group: 3
+// Milestone: yes                Scope: <routes, modules>; shared: none
+// Closes: F1, F2-F4, C3         (bullets, bold, backticks, ranges and a
+//                                wrapped second line are all read)
+//
+// Lenient on purpose: a field this cannot read is a slice that closes
+// nothing, which the gate would wave through. dod-check --lint then names
+// every slice that closes nothing rather than trusting the parse.
+const ID = /^[A-Z]+\d+[a-z]?$/
+export function expandIds (text) {
+  const out = []
+  for (const tok of String(text).replace(/[`*_]/g, '').split(/[,;\s]+/).filter(Boolean)) {
+    const r = /^([A-Z]+)(\d+)(?:-|–|—|\.\.)([A-Z]+)?(\d+)$/.exec(tok)
+    if (r && (!r[3] || r[3] === r[1]) && +r[4] >= +r[2] && +r[4] - +r[2] < 200) {
+      for (let n = +r[2]; n <= +r[4]; n++) out.push(`${r[1]}${n}`)
+    } else if (ID.test(tok)) out.push(tok)
+  }
+  return out
+}
+const RANGE = /^[A-Z]+\d+[a-z]?(?:(?:-|–|—|\.\.)[A-Z]*\d+)?$/
+const isIdList = t => { const toks = t.split(/[,;\s]+/).filter(Boolean); return toks.length > 0 && toks.every(x => RANGE.test(x)) }
+const unmark = l => l.replace(/\*\*|__/g, '').replace(/^(?:[-*+]\s+|\d+[.)]\s+)/, '').trim()
 export function parsePlan (text) {
   const checks = {}
   const slices = []
   let section = null
   let cur = null
+  let last = null
   for (const raw of text.split('\n')) {
     const line = raw.trim()
-    const h = /^##\s+(.*)$/.exec(line)
+    const h = /^#{2,4}\s+(.*)$/.exec(line)
     if (h) {
-      const s = /^Slice\s+([0-9]+[a-z]?)\s*[:.-]?\s*(.*)$/i.exec(h[1])
+      last = null
+      const title = h[1].replace(/\*\*|__|`/g, '').trim()
+      const s = /^Slice\s+([0-9]+[a-z]?)\b\s*[:.)\-–—]?\s*(.*)$/i.exec(title)
       if (s) { cur = { id: s[1], name: s[2] || `slice ${s[1]}`, tier: 'standard', confidence: 'high', group: s[1], milestone: false, closes: [], scope: '' }; slices.push(cur); section = 'slice' }
-      else { cur = null; section = /^checks\b/i.test(h[1]) ? 'checks' : 'other' }
+      else { cur = null; section = /^checks\b/i.test(title) ? 'checks' : 'other' }
       continue
     }
+    if (!line) { last = null; continue }
     if (section === 'checks') {
-      const c = /^[-*]?\s*(typecheck|lint|test|build|holdout)\s*:\s*`?(.+?)`?\s*$/i.exec(line)
-      if (c) checks[c[1].toLowerCase()] = c[2]
+      // Only the label is unmarked: a command keeps its globs and underscores.
+      const c = /^(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*|__)?(typecheck|lint|test|build|install|holdout)(?:\*\*|__)?\s*:(?:\*\*|__)?\s*(.+)$/i.exec(line)
+      if (c) checks[c[1].toLowerCase()] = c[2].trim().replace(/^`([^`]+)`$/, '$1')
+      continue
     }
     if (section === 'slice' && cur) {
-      const f = /^(Tier|Confidence|Group|Milestone|Scope|Closes)\s*:\s*(.+)$/i.exec(line)
-      if (!f) continue
+      const norm = unmark(line).replace(/`/g, '')
+      const f = /^(Tier|Confidence|Group|Milestone|Scope|Closes)\s*:\s*(.*)$/i.exec(norm)
+      if (!f) {
+        // A Closes list wrapped onto the next line carries on there.
+        if (last === 'closes' && isIdList(norm)) cur.closes.push(...expandIds(norm))
+        else last = null
+        continue
+      }
       const k = f[1].toLowerCase(); const v = f[2].trim()
-      if (k === 'closes') cur.closes = v.split(/[,\s]+/).map(x => x.trim()).filter(x => /^[A-Z]+\d+[a-z]?$/.test(x))
-      else if (k === 'milestone') cur.milestone = /^(yes|true)$/i.test(v)
+      last = k
+      if (k === 'closes') cur.closes = expandIds(v)
+      else if (k === 'milestone') cur.milestone = /^(yes|true)\b/i.test(v)
       else if (k === 'tier') cur.tier = /light/i.test(v) ? 'light' : 'standard'
       else if (k === 'confidence') cur.confidence = /low/i.test(v) ? 'low' : 'high'
       else cur[k] = v
@@ -113,24 +145,34 @@ export function parsePlan (text) {
   return { checks, slices }
 }
 
-// Run one command. Exit 0 is pass, exit 1 is fail, anything else is
-// could-not-run: 127 not found, 124 or a kill on timeout, 2 misuse, 69 a
-// blocked toolchain. Could-not-run is UNKNOWN and is never read as green.
+// Run one command under pipefail, so `cmd | tail` fails when cmd fails.
+// Exit 0 is pass. Could-not-run is the machine, never the build: 126 not
+// executable, 127 not found, 69 a blocked toolchain, a timeout or a kill.
+// Every other non-zero exit is a FAIL: tsc exits 2 on a type error, cargo
+// 101, xcodebuild 65, curl -f 22, and none of those mean "could not run".
+const CANNOT_RUN = new Set([126, 127, 69])
+const CURL_UNREACHABLE = new Set([6, 7, 28, 35, 52, 56])
+// A stage that stops reading early (grep -q, head) makes the writer die of
+// SIGPIPE, and pipefail would report that as the pipeline's failure, which
+// inverts `! cmd | grep -q`. Such pipelines keep plain bash semantics.
+const EARLY_EXIT = /\|\s*(?:head\b|grep\b[^|]*(?:\s-[a-zA-Z]*[qm]|--quiet|--silent|--max-count))/
 export function run (cmd, { cwd = '.', timeoutMs = +(process.env.FORGE_CHECK_TIMEOUT || 300) * 1000 } = {}) {
-  const r = spawnSync('bash', ['-c', cmd], { cwd, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, FORGE: '1', CI: '1' } })
+  const shell = EARLY_EXIT.test(cmd) ? ['-c', cmd] : ['-o', 'pipefail', '-c', cmd]
+  const r = spawnSync('bash', shell, { cwd, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, FORGE: '1', CI: '1' } })
   const out = `${r.stdout || ''}${r.stderr || ''}`
   const tail = out.trim().split('\n').slice(-12).join('\n').slice(-1500)
   if (r.error || r.signal) return { state: 'unknown', code: r.signal || 'error', out, tail: `${r.signal ? 'timed out or killed' : String(r.error)}\n${tail}` }
   if (r.status === 0) return { state: 'pass', code: 0, out, tail }
-  if (r.status === 1) return { state: 'fail', code: 1, out, tail }
-  return { state: 'unknown', code: r.status, out, tail }
+  if (CANNOT_RUN.has(r.status) || (/\bcurl\b/.test(cmd) && CURL_UNREACHABLE.has(r.status))) return { state: 'unknown', code: r.status, out, tail }
+  return { state: 'fail', code: r.status, out, tail }
 }
 
-// A failing check is re-run once before it counts. Flaky end-to-end tests and
-// live URLs fail red for reasons that are not the build.
+// A failing or could-not-run check is re-run once before it counts. Flaky
+// end-to-end tests and live URLs go red, or dark, for reasons that are not
+// the build.
 export function runTwice (cmd, opts) {
   const a = run(cmd, opts)
-  if (a.state !== 'fail') return a
+  if (a.state === 'pass') return a
   const b = run(cmd, opts)
   return b.state === 'pass' ? { ...b, flaky: true } : b
 }

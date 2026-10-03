@@ -520,7 +520,7 @@ the outcome, updates RESUME.md, and acts:</p>
 <table>
 <tr><th>Return</th><th>What the lead does</th></tr>
 <tr><td>done</td><td>ships</td></tr>
-<tr><td>stuck</td><td>calls the oracle if a stuck trigger holds and the cap allows, and applies its one action. Otherwise rewinds: <code>git reset --hard</code> to the slice's base from <code>attempt.mjs state</code>, a re-slice by the architect, <code>attempt.mjs reset</code>, <code>arm.sh --amend</code>, relaunch</td></tr>
+<tr><td>stuck</td><td>calls the oracle if a stuck trigger holds and the cap allows, and applies its one action. Otherwise rewinds: <code>rewind.sh</code> puts the product back to the slice's base and keeps <code>.forge/</code>, then a re-slice by the architect, <code>arm.sh --amend</code>, relaunch</td></tr>
 <tr><td>needs-reslice</td><td>the same re-slice, with no oracle</td></tr>
 <tr><td>blocked</td><td>names the prerequisite in RESUME.md, relaunches if other slices can still build, otherwise parks</td></tr>
 <tr><td>open lines after verify</td><td>the oracle for a line with two or more defects after a gate PASS, cap permitting; otherwise relaunches with <code>fixIds</code> at most twice, then parks</td></tr>
@@ -822,7 +822,7 @@ accept the trust prompt</td></tr>
 <dt>Worktree</dt><dd>an isolated copy of the repo so parallel builders never collide (M and L goals, two or three at a time).</dd>
 <dt>Slice</dt><dd>one vertical piece of the plan, crossing every layer, sized for one builder dispatch. Marked standard or light, and closes a named set of rubric lines.</dd>
 <dt>Rubric, DoD</dt><dd>the Definition of Done in DOD.md; every line a checkbox with proof behind it.</dd>
-<dt>check, judge, operator</dt><dd>the three kinds of rubric line: a command that exits 0 for pass and 1 for fail, a ruling by the verifier against a stated threshold, and a proof only you can supply. Judge lines are budgeted at S 8, M 25, L 50.</dd>
+<dt>check, judge, operator</dt><dd>the three kinds of rubric line: a command that exits 0 when the property holds (126, 127, 69 and a timeout mean it could not run; any other exit fails it), a ruling by the verifier against a stated threshold, and a proof only you can supply. Operator lines never hold the final PASS: the report lists them with the <code>dod-check.mjs --operator</code> command that records your proof. Judge lines are budgeted at S 8, M 25, L 50.</dd>
 <dt>V0</dt><dd>the last rubric line, <code>final verifier PASS</code>. Only <code>dod-check.mjs --rule</code> ticks it, and only when every other line holds. The Stop gate never releases before it.</dd>
 <dt>UNKNOWN</dt><dd>could not run. Never green and never a FAIL; it routes to a prerequisite rather than up the ladder.</dd>
 <dt>Gate</dt><dd><code>gate.mjs</code>, the per-slice check: pinned typecheck, lint and tests, the slice's check lines, and a suppression scan. Minutes, not hours.</dd>

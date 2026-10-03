@@ -69,33 +69,50 @@ if [ -n "$LEAK" ] && [ -f .forge/commit-allow ]; then
   LEAK=$(printf '%s\n' "$LEAK" | grep -vxF -f .forge/commit-allow || true)
 fi
 
+# A secret-looking path is held back, never committed, and everything else
+# still is: one stray .env must not switch the safety net off for the whole
+# run. The warning stays on disk, where rehydrate.sh and the operator find it.
+# arm.sh keeps .env files out of git locally, so this is the rare case.
+# The run's own status notes describe this tree; they never belong in it.
+EXCLUDES=(':(exclude).forge/LEAK-WARNING' ':(exclude).forge/COMMIT-BLOCKED' ':(exclude).forge/BUILDING')
 if [ -n "$LEAK" ]; then
-  # Every caller invokes this as `commit.sh ... >/dev/null 2>&1`, so stderr
-  # goes nowhere. A refusal nobody can see stops the safety net for the rest of
-  # the run while every call still reports success. Leave the record on disk,
-  # where rehydrate.sh and the operator will both find it.
   {
-    printf 'commit refused %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf 'A secret-looking path is in the working tree, so nothing is being\n'
-    printf 'committed and the safety net is OFF until it is resolved:\n'
-    printf '  %s\n' $LEAK
-    printf 'Fix by adding it to .gitignore, or, if it is genuinely committable,\n'
-    printf 'to .forge/commit-allow (one exact path per line).\n'
-  } > .forge/COMMIT-BLOCKED 2>/dev/null
-  [ -d .forge ] && printf '%s | commit | REFUSED, secret-looking path in tree\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .forge/RUNLOG.md 2>/dev/null
-  {
-    echo "forge commit: REFUSED. A secret-looking path is in the tree:"
-    printf '  %s\n' $LEAK
-    echo "Nothing was staged or committed. See .forge/COMMIT-BLOCKED."
-  } >&2
-  exit 0
+    printf 'held back %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'Secret-looking paths are in the working tree and are not committed:\n'
+    printf '%s\n' "$LEAK" | sed 's/^/  /'
+    printf 'Add them to .gitignore, or, if one is genuinely committable, to\n'
+    printf '.forge/commit-allow (one exact path per line).\n'
+  } > .forge/LEAK-WARNING 2>/dev/null
+  while IFS= read -r p; do [ -n "$p" ] && EXCLUDES+=(":(exclude,literal)$p"); done <<< "$LEAK"
+  echo "forge commit: held back secret-looking paths; see .forge/LEAK-WARNING" >&2
+else
+  rm -f .forge/LEAK-WARNING 2>/dev/null
 fi
-rm -f .forge/COMMIT-BLOCKED 2>/dev/null
 
-git add -A >/dev/null 2>&1 || exit 0
+git add -A -- . "${EXCLUDES[@]}" >/dev/null 2>&1 || exit 0
+# A secret someone staged by hand is unstaged here, and only that path.
+if [ -n "$LEAK" ]; then
+  HAVE_HEAD=0; git rev-parse -q --verify HEAD >/dev/null 2>&1 && HAVE_HEAD=1
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    if [ "$HAVE_HEAD" = 1 ]; then git reset -q -- "$p" >/dev/null 2>&1
+    else git rm -q --cached --ignore-unmatch -- "$p" >/dev/null 2>&1; fi
+  done <<< "$LEAK"
+fi
+git diff --cached --quiet 2>/dev/null && exit 0
 
-if git commit -q -m "$MSG" >/dev/null 2>&1; then
+# --no-verify: the product's commit hooks judge product commits. A forge
+# checkpoint that a hook rejects is a safety net silently gone, so a failure
+# here is written down where the gate and the next session both read it.
+if ERR=$(git commit -q --no-verify -m "$MSG" 2>&1); then
   date +%s > "$STAMP" 2>/dev/null
+  rm -f .forge/COMMIT-BLOCKED 2>/dev/null
+else
+  {
+    printf 'commit blocked %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'git commit failed, so nothing is being committed:\n'
+    printf '%s\n' "$ERR" | head -5 | sed 's/^/  /'
+  } > .forge/COMMIT-BLOCKED 2>/dev/null
+  echo "forge commit: BLOCKED, see .forge/COMMIT-BLOCKED" >&2
 fi
 exit 0

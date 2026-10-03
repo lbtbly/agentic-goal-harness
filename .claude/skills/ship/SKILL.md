@@ -11,7 +11,7 @@ On a deployed done level the first deploy happens at the end of slice 1, not at
 SHIP. Slice 1 is the walking skeleton: routes exist, the app builds, it goes
 live. Everything after it is verified against a real URL.
 
-1. `scripts/preflight.sh`. Outstanding items mean no deploy is possible yet;
+1. `scripts/preflight.sh --probe`. Outstanding items mean no deploy is possible yet;
    say so once, keep building locally, park the live-URL lines.
 2. Green pre-flight: `vercel link` if `.vercel/` is absent, then
    `vercel deploy --prod`, and record the URL in RESUME.md and EVIDENCE.md.

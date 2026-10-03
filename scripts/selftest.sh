@@ -12,7 +12,7 @@ S="$ROOT/scripts"
 # Every script, not a frozen list of nine: commit.sh and preflight.sh shipped
 # with no assertion that they stay silent and side-effect-free outside a
 # forge project, which is the guarantee this loop exists to hold.
-ALL="guard.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh capture.sh arm.sh craft-suite.sh attempt.mjs dod-check.mjs gate.mjs slices.mjs forge-lib.mjs"
+ALL="guard.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh capture.sh arm.sh rewind.sh craft-suite.sh attempt.mjs dod-check.mjs gate.mjs slices.mjs forge-lib.mjs"
 FAILS=0
 ok()   { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; FAILS=$((FAILS+1)); }
@@ -128,7 +128,7 @@ N=$( cd "$T5" && git rev-list --count HEAD )
 ( cd "$T5" && printf 'k\n' > server.pem && FORGE_COMMIT_WINDOW=0 CLAUDE_PROJECT_DIR="$T5" "$S/commit.sh" "leak" ) >/dev/null 2>&1
 N=$( cd "$T5" && git rev-list --count HEAD )
 STAGED=$( cd "$T5" && git diff --cached --name-only | wc -l | tr -d ' ' )
-{ [ "$N" -eq 3 ] && [ "$STAGED" -eq 0 ]; } && ok "commit refuses a secret path and unstages it" \
+{ [ "$N" -eq 3 ] && [ "$STAGED" -eq 0 ]; } && ok "commit holds back a lone secret path and commits nothing else" \
   || fail "commit leaked a secret path (n=$N staged=$STAGED)"
 T6=$(mktemp -d)
 ( cd "$T6" && CLAUDE_PROJECT_DIR="$T6" "$S/commit.sh" "x" ) >/dev/null 2>&1
@@ -339,6 +339,197 @@ OUT=$(printf '{"source":"startup"}' | CLAUDE_PROJECT_DIR="$BW" bash "$S/rehydrat
 { [ ! -f "$BW/.forge/BUILDING" ] && printf '%s' "$OUT" | grep -q '/forge resume'; } \
   && ok "a fresh session clears a stale build marker and names /forge resume" || fail "a dead build marker survived a restart"
 rm -rf "$V2"
+
+# 3g. The review's run-breakers, one fixture each. Every case below failed on
+# the first v2 commit.
+RB=$(mktemp -d)
+newrepo () { mkdir -p "$1/.forge" && ( cd "$1" && git init -q . && git config user.email t@t && git config user.name t ); }
+plan1 () { printf '# Plan\n## Checks\n- test: true\n%s\n## Slice 1: one\nCloses: %s\n' "${2:-}" "${3:-F1}" > "$1/.forge/PLAN.md"; }
+dcx () { local d=$1; shift; ( cd "$d" && CLAUDE_PROJECT_DIR="$d" node "$S/dod-check.mjs" "$@" 2>&1 ); }
+
+# 1. A new project is not a git repo yet. Arming starts one.
+G1="$RB/green"; mkdir -p "$G1/.forge"
+printf -- '- [ ] F1 | x | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G1/.forge/DOD.md"; plan1 "$G1"
+( cd "$G1" && CLAUDE_PROJECT_DIR="$G1" bash "$S/arm.sh" ) >/dev/null 2>&1; RC=$?
+{ [ $RC -eq 0 ] && grep -q '^sha ' "$G1/.forge/ARMED" && [ -f "$G1/.gitignore" ] \
+  && grep -qx '.env' "$G1/.git/info/exclude" && grep -qx '.forge/BUILDING' "$G1/.git/info/exclude" \
+  && grep -q 'merge=ours' "$G1/.git/info/attributes"; } \
+  && ok "arming a new project starts its repo and keeps secrets and BUILDING out of git" \
+  || fail "arming a new project failed (rc=$RC)"
+
+# 2. The plan parser reads the forms an architect writes, and lint catches a gap.
+node --input-type=module -e '
+import { parsePlan } from "'"$S"'/forge-lib.mjs"
+const p = parsePlan(["## Slices","### Slice 1 - a","- Tier: light","- **Closes:** F1, F2","## Slice 2: b","Closes: `F3`, F4-F6,","  F7","Milestone: yes (core loop)"].join("\n")).slices
+const ok = p.length === 2 && p[0].closes.join() === "F1,F2" && p[0].tier === "light"
+  && p[1].closes.join() === "F3,F4,F5,F6,F7" && p[1].milestone === true
+process.exit(ok ? 0 : 1)' && ok "the plan parser reads bullets, bold, backticks, ranges, wraps and ### headings" \
+  || fail "the plan parser drops fields an architect writes"
+G2="$RB/lint"; mkdir -p "$G2/.forge"
+printf -- '- [ ] F1 | a | check: true\n- [ ] F2 | b | check: true\n- [ ] R1 | c | operator: domain\n- [ ] V0 | final verifier PASS | rule\n' > "$G2/.forge/DOD.md"; plan1 "$G2"
+OUT=$(dcx "$G2" --lint); RC=$?
+{ [ $RC -eq 1 ] && printf '%s' "$OUT" | grep -q 'F2 is closed by no slice' && ! printf '%s' "$OUT" | grep -q 'R1 is closed'; } \
+  && ok "lint names a rubric line no slice closes, and exempts operator lines" \
+  || fail "lint let a slice gap through (rc=$RC)"
+
+# 3. Operator lines are the human's: never the verifier's, never holding V0.
+G3="$RB/oper"; mkdir -p "$G3/.forge"
+printf -- '- [ ] F1 | a | check: true\n- [ ] R1 | domain is ours | operator: DNS record\n- [ ] V0 | final verifier PASS | rule\n' > "$G3/.forge/DOD.md"
+dcx "$G3" --judge R1 pass "looks fine" >/dev/null; RC=$?
+[ $RC -eq 3 ] && ok "the verifier cannot vouch for an operator line" || fail "--judge ruled an operator line (rc=$RC)"
+OUT=$(dcx "$G3" --rule); RC=$?
+{ [ $RC -eq 0 ] && grep -q '^- \[x\] V0' "$G3/.forge/DOD.md" && printf '%s' "$OUT" | tail -1 | grep -q '"operator":\["R1"\]'; } \
+  && ok "an open operator line does not hold V0, and is named for the human" \
+  || fail "an operator line blocked V0 (rc=$RC)"
+touch "$G3/.forge/ARMED"; echo '{}' | CLAUDE_PROJECT_DIR="$G3" bash "$S/dod-gate.sh" >/dev/null 2>&1
+[ $? -eq 0 ] && ok "the Stop gate releases with only operator lines open" || fail "the Stop gate held on an operator line"
+rm -f "$G3/.forge/ARMED"
+dcx "$G3" --operator R1 "dig shows the TXT record" >/dev/null
+grep -q '^- \[x\] R1' "$G3/.forge/DOD.md" && ok "the operator records an operator line with --operator" || fail "--operator did not record"
+
+# 4 and 5. A real failure is a FAIL whatever its exit code; a pipe cannot hide one.
+G4="$RB/exit"; mkdir -p "$G4/.forge"
+printf -- '- [ ] F1 | tsc | check: exit 2\n- [ ] F2 | gone | check: exit 127\n- [ ] F3 | piped | check: false | tail -1\n- [ ] V0 | final verifier PASS | rule\n' > "$G4/.forge/DOD.md"
+OUT=$(dcx "$G4" --ids F1,F2,F3); J=$(printf '%s' "$OUT" | tail -1)
+{ printf '%s' "$J" | grep -q '"fail":\["F1","F3"\]' && printf '%s' "$J" | grep -q '"unknown":\["F2"\]'; } \
+  && ok "exit 2 fails, 127 could not run, and a pipe into tail cannot hide a failure" \
+  || fail "exit codes misread: $J"
+[ ! -f "$G4/.forge/EVIDENCE.md" ] && ok "a run without --tick writes nothing" || fail "a read-only run left evidence behind"
+
+if git --version >/dev/null 2>&1; then
+  # 7. Parallel worktree branches both append to .forge ledgers; merges keep main's.
+  G7="$RB/merge"; newrepo "$G7"
+  printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G7/.forge/DOD.md"; plan1 "$G7"
+  echo base > "$G7/.forge/EVIDENCE.md"
+  ( cd "$G7" && git add -A && git commit -q -m base && CLAUDE_PROJECT_DIR="$G7" bash "$S/arm.sh" \
+    && git checkout -q -b w1 && echo w1 >> .forge/EVIDENCE.md && echo a > a.js && git add -A && git commit -q -m w1 \
+    && git checkout -q - && git checkout -q -b w2 && echo w2 >> .forge/EVIDENCE.md && echo b > b.js && git add -A && git commit -q -m w2 \
+    && git checkout -q - && git merge -q --no-ff w1 -m m1 && git merge -q --no-ff w2 -m m2 ) >/dev/null 2>&1; RC=$?
+  { [ $RC -eq 0 ] && [ -f "$G7/a.js" ] && [ -f "$G7/b.js" ]; } \
+    && ok "two worktree branches that both touched .forge merge without a conflict" \
+    || fail "parallel merges conflict on .forge (rc=$RC)"
+
+  # 8. A rewind puts the product back and keeps the run's record.
+  G8="$RB/rewind"; newrepo "$G8"
+  printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G8/.forge/DOD.md"; plan1 "$G8"
+  echo one > "$G8/app.js"
+  ( cd "$G8" && git add -A && git commit -q -m base && CLAUDE_PROJECT_DIR="$G8" bash "$S/arm.sh" \
+    && CLAUDE_PROJECT_DIR="$G8" node "$S/attempt.mjs" base 1 "$(git rev-parse HEAD)" \
+    && echo two > app.js && echo new > extra.js && echo 'oracle | stuck | 1' >> .forge/RUNLOG.md \
+    && git add -A && git commit -q -m slice && CLAUDE_PROJECT_DIR="$G8" bash "$S/rewind.sh" 1 ) >/dev/null 2>&1
+  { [ "$(cat "$G8/app.js")" = one ] && [ ! -f "$G8/extra.js" ] && grep -q 'oracle | stuck' "$G8/.forge/RUNLOG.md" \
+    && grep -q RESET "$G8/.forge/ATTEMPTS.json"; } \
+    && ok "a rewind restores the product and keeps .forge, the oracle log included" \
+    || fail "a rewind lost the run's record or kept the slice's code"
+
+  # 10. A product commit hook that rejects forge's message cannot unpin the rubric.
+  G10="$RB/hook"; newrepo "$G10"
+  printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G10/.forge/DOD.md"; plan1 "$G10"
+  printf '#!/bin/sh\nexit 1\n' > "$G10/.git/hooks/commit-msg"; chmod +x "$G10/.git/hooks/commit-msg"
+  ( cd "$G10" && CLAUDE_PROJECT_DIR="$G10" bash "$S/arm.sh" ) >/dev/null 2>&1; RC=$?
+  SHA=$(sed -n 's/^sha //p' "$G10/.forge/ARMED" 2>/dev/null)
+  { [ $RC -eq 0 ] && [ -n "$SHA" ] && ( cd "$G10" && git cat-file -e "$SHA:.forge/DOD.md" ); } \
+    && ok "a rejecting commit hook cannot leave ARMED pointing at a commit without the rubric" \
+    || fail "arm.sh was defeated by a commit hook (rc=$RC)"
+
+  # 13. The suppression scan sees uncommitted and new files, ignores an allow
+  #     file written after arming, and stands down while commits are blocked.
+  G13="$RB/suppress"; newrepo "$G13"
+  printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G13/.forge/DOD.md"; plan1 "$G13"
+  ( cd "$G13" && git add -A && git commit -q -m base && CLAUDE_PROJECT_DIR="$G13" bash "$S/arm.sh" \
+    && CLAUDE_PROJECT_DIR="$G13" node "$S/attempt.mjs" base 1 "$(git rev-parse HEAD)" ) >/dev/null 2>&1
+  printf '// @ts-nocheck\nexport const x = 1\n' > "$G13/new.ts"
+  mkdir -p "$G13/.forge/overrides"; printf '.\n' > "$G13/.forge/overrides/suppress-allow"
+  OUT=$( cd "$G13" && CLAUDE_PROJECT_DIR="$G13" node "$S/gate.mjs" 1 2>&1 ); RC=$?
+  { [ $RC -eq 1 ] && printf '%s' "$OUT" | grep -q 'suppression'; } \
+    && ok "an uncommitted new file with @ts-nocheck fails the gate, and a late allow file is ignored" \
+    || fail "the suppression scan missed an uncommitted file (rc=$RC)"
+  rm -f "$G13/new.ts"; printf 'commit blocked\n' > "$G13/.forge/COMMIT-BLOCKED"
+  ( cd "$G13" && CLAUDE_PROJECT_DIR="$G13" node "$S/gate.mjs" 1 ) >/dev/null 2>&1; RC=$?
+  [ $RC -eq 2 ] && ok "the gate cannot vouch for anything while commits are blocked" || fail "the gate passed with commits blocked (rc=$RC)"
+
+  # 14 and 6. The pinned holdout suite holds V0; --rule reuses a green --all.
+  G14="$RB/holdout"; newrepo "$G14"
+  printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G14/.forge/DOD.md"; plan1 "$G14" '- holdout: false'
+  ( cd "$G14" && git add -A && git commit -q -m base && CLAUDE_PROJECT_DIR="$G14" bash "$S/arm.sh" ) >/dev/null 2>&1
+  dcx "$G14" --all --tick >/dev/null
+  OUT=$(dcx "$G14" --rule); RC=$?
+  { [ $RC -eq 1 ] && grep -q '^- \[ \] V0' "$G14/.forge/DOD.md" && printf '%s' "$OUT" | grep -q 'reusing a green --all'; } \
+    && ok "a failing holdout suite holds V0, and --rule reuses the green --all" \
+    || fail "V0 ticked over a failing holdout, or --rule re-ran every check (rc=$RC)"
+else
+  fail "git is not usable; merge, rewind, hook, suppression and holdout fixtures are unchecked"
+fi
+
+# 9 and 6. Long gates and headless runs get the time they need.
+node -e '
+const e = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).env || {}
+process.exit(+e.BASH_DEFAULT_TIMEOUT_MS >= 1200000 && +e.BASH_MAX_TIMEOUT_MS >= 3600000 && e.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS === "0" ? 0 : 1)' "$ROOT/.claude/settings.json" \
+  && ok "the gate gets a long Bash timeout and a headless run waits for its build" \
+  || fail "settings.json leaves the gate or a headless run on the default time limits"
+
+# 11 and 12. The ship skill probes the pre-flight; the designer keeps the direction.
+grep -q 'preflight.sh --probe' "$ROOT/.claude/skills/ship/SKILL.md" \
+  && ok "the ship skill probes the pre-flight, so run: lines can pass" || fail "the ship skill can never deploy"
+grep -q '## Direction' "$ROOT/.claude/agents/designer.md" \
+  && ok "the designer builds on the merged direction instead of overwriting it" || fail "the designer overwrites the direction"
+rm -rf "$RB"
+
+# 3h. What the regression review of 3g's fixes found. Each case failed once.
+RG=$(mktemp -d)
+node --input-type=module -e '
+import { parsePlan } from "'"$S"'/forge-lib.mjs"
+const p = parsePlan(["## Checks","- lint: eslint \"src/**/*.{ts,tsx}\"","- **test**: npx jest src/__tests__","## Slice 1: a","Closes: F1, F2","- C4 polish lands in slice 5"].join("\n"))
+const ok = p.checks.lint === "eslint \"src/**/*.{ts,tsx}\"" && p.checks.test === "npx jest src/__tests__" && p.slices[0].closes.join() === "F1,F2"
+process.exit(ok ? 0 : 1)' && ok "Checks commands keep their globs and underscores; prose after Closes is not an id" \
+  || fail "the plan parser rewrote a command or swallowed a prose line"
+
+G="$RG/pipes"; mkdir -p "$G/.forge"
+printf -- '- [ ] F1 | text absent | check: ! seq 1 200000 | grep -q 5\n- [ ] F2 | text present | check: seq 1 200000 | grep -q 5\n- [ ] F3 | live | check: curl -sf --max-time 3 http://127.0.0.1:9/\n- [ ] V0 | final verifier PASS | rule\n' > "$G/.forge/DOD.md"
+J=$( cd "$G" && CLAUDE_PROJECT_DIR="$G" node "$S/dod-check.mjs" --ids F1,F2,F3 2>&1 | tail -1 )
+{ printf '%s' "$J" | grep -q '"pass":\["F2"\]' && printf '%s' "$J" | grep -q '"fail":\["F1"\]' && printf '%s' "$J" | grep -q '"unknown":\["F3"\]'; } \
+  && ok "a pipe into grep -q keeps grep's verdict, and an unreachable URL is could-not-run" \
+  || fail "pipe or curl semantics misread: $J"
+
+G="$RG/gate-op"; mkdir -p "$G/.forge"
+printf -- '- [x] F1 | a | check: true\n- [ ] F7 | operator approves a refund in two clicks | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G/.forge/DOD.md"; touch "$G/.forge/ARMED"
+echo '{}' | CLAUDE_PROJECT_DIR="$G" bash "$S/dod-gate.sh" >/dev/null 2>&1
+[ $? -eq 2 ] && ok "a property that mentions an operator is still a line the gate holds" || fail "the Stop gate skipped a check line whose text says operator"
+
+if git --version >/dev/null 2>&1; then
+  G="$RG/staged"; mkdir -p "$G/.forge"
+  ( cd "$G" && git init -q . && git config user.email t@t && git config user.name t && echo a > a && git add -A && git commit -q -m base \
+    && printf 'k\n' > server.key && echo b > b && git add server.key && CLAUDE_PROJECT_DIR="$G" bash "$S/commit.sh" --now x ) >/dev/null 2>&1
+  ( cd "$G" && git ls-tree -r --name-only HEAD | grep -qx b && ! git ls-tree -r --name-only HEAD | grep -qx server.key ) \
+    && ok "a secret staged by hand is unstaged, never committed" || fail "commit.sh committed a hand-staged secret"
+
+  G="$RG/rewind"; mkdir -p "$G/.forge"
+  printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G/.forge/DOD.md"
+  printf '# Plan\n## Checks\n- test: true\n## Slice 1: one\nCloses: F1\n' > "$G/.forge/PLAN.md"
+  ( cd "$G" && git init -q . && git config user.email t@t && git config user.name t \
+    && echo util > util.ts && echo mine > NOTES.txt && git add -A && git commit -q -m base \
+    && CLAUDE_PROJECT_DIR="$G" bash "$S/arm.sh" && CLAUDE_PROJECT_DIR="$G" node "$S/attempt.mjs" base 1 "$(git rev-parse HEAD)" \
+    && git mv util.ts helpers.ts && echo new > new.ts && printf 'k\n' > signing.pem && git add new.ts && git commit -q -m slice \
+    && CLAUDE_PROJECT_DIR="$G" bash "$S/rewind.sh" 1 ) >/dev/null 2>&1
+  { [ -f "$G/util.ts" ] && [ ! -f "$G/helpers.ts" ] && [ ! -f "$G/new.ts" ] && [ -f "$G/NOTES.txt" ] && [ -f "$G/signing.pem" ]; } \
+    && ok "a rewind undoes a rename and an add, and keeps untracked secrets and the operator's files" \
+    || fail "a rewind kept the slice's rename or deleted files it should keep"
+
+  G="$RG/holdout"; mkdir -p "$G/.forge"
+  printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G/.forge/DOD.md"
+  printf '# Plan\n## Checks\n- test: true\n- holdout: sleep 2\n## Slice 1: one\nCloses: F1\n' > "$G/.forge/PLAN.md"
+  ( cd "$G" && git init -q . && git config user.email t@t && git config user.name t && git add -A && git commit -q -m base && CLAUDE_PROJECT_DIR="$G" bash "$S/arm.sh" ) >/dev/null 2>&1
+  ( cd "$G" && FORGE_CHECK_TIMEOUT=1 CLAUDE_PROJECT_DIR="$G" node "$S/dod-check.mjs" --rule ) >/dev/null 2>&1; RC=$?
+  [ $RC -eq 0 ] && ok "the holdout suite runs on its own time limit, not a single check's" || fail "a slow holdout hit the per-check timeout (rc=$RC)"
+fi
+
+G="$RG/ignore"; mkdir -p "$G/.forge"
+printf -- '- [ ] F1 | a | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$G/.forge/DOD.md"
+( cd "$G" && CLAUDE_PROJECT_DIR="$G" bash "$S/arm.sh" ) >/dev/null 2>&1
+mkdir -p "$G/app/build" && echo page > "$G/app/build/page.tsx"
+( cd "$G" && git check-ignore -q app/build/page.tsx ) && fail "a source route named build/ is ignored by the starter .gitignore" \
+  || ok "the starter .gitignore ignores build output at the root only"
+rm -rf "$RG"
 
 # The defect ledger. A rubric line refused by the verifier used to be
 # byte-identical here to one nobody had attempted.
@@ -570,27 +761,27 @@ N=$( cd "$AR" && git rev-list --count HEAD )
 [ "$N" -eq 2 ] && ok "commit throttle survives a non-integer window" \
   || fail "a worded window disabled the throttle (n=$N)"
 
-# The refusal used to stage everything, then git reset, discarding a hand-built
-# index, and report nothing to callers who all redirect stderr to /dev/null.
+# A secret-looking path is held back and everything else still commits: one
+# stray .env must not switch the safety net off for the rest of the run. The
+# hand-built index survives, and the warning is on disk, not in a commit.
 AL="$AUD/leak"; mkdir -p "$AL/.forge"
 ( cd "$AL" && git init -q . && git config user.email t@t && git config user.name t \
   && echo a > a.txt && git add -A && git commit -q -m base ) >/dev/null 2>&1
 ( cd "$AL" && echo x > wanted.txt && printf 'k\n' > server.pem && git add wanted.txt ) >/dev/null 2>&1
 ( cd "$AL" && FORGE_COMMIT_WINDOW=0 CLAUDE_PROJECT_DIR="$AL" bash "$S/commit.sh" --now "leak" ) >/dev/null 2>&1
-STAGED=$( cd "$AL" && git diff --cached --name-only | tr '\n' ' ' )
-N=$( cd "$AL" && git rev-list --count HEAD )
-case "$STAGED" in
-  *wanted.txt*) [ "$N" -eq 1 ] && [ -f "$AL/.forge/COMMIT-BLOCKED" ] \
-      && ok "commit refuses a leak without wiping the index, and says so on disk" \
-      || fail "leak refusal: committed=$N record=$([ -f "$AL/.forge/COMMIT-BLOCKED" ] && echo yes || echo no)" ;;
-  *) fail "leak refusal wiped the hand-staged index ('$STAGED')" ;;
+IN_HEAD=$( cd "$AL" && git ls-tree -r --name-only HEAD | tr '\n' ' ' )
+case "$IN_HEAD" in
+  *server.pem*) fail "commit put a secret-looking path in a commit" ;;
+  *wanted.txt*) { [ -f "$AL/.forge/LEAK-WARNING" ] && ! printf '%s' "$IN_HEAD" | grep -q LEAK-WARNING; } \
+      && ok "a secret-looking path is held back while the rest commits, and the warning stays on disk" \
+      || fail "the leak warning is missing or was committed" ;;
+  *) fail "a stray secret stopped every other commit ('$IN_HEAD')" ;;
 esac
 ( cd "$AL" && printf 'server.pem\n' > .forge/commit-allow \
   && FORGE_COMMIT_WINDOW=0 CLAUDE_PROJECT_DIR="$AL" bash "$S/commit.sh" --now "allowed" ) >/dev/null 2>&1
-N=$( cd "$AL" && git rev-list --count HEAD )
-{ [ "$N" -eq 2 ] && [ ! -f "$AL/.forge/COMMIT-BLOCKED" ]; } \
-  && ok "commit-allow releases the refusal and clears the record" \
-  || fail "allow-list ignored (n=$N)"
+( cd "$AL" && git ls-tree -r --name-only HEAD | grep -qx server.pem ) && [ ! -f "$AL/.forge/LEAK-WARNING" ] \
+  && ok "commit-allow releases a held path and clears the warning" \
+  || fail "allow-list ignored"
 
 rm -rf "$AUD"
 

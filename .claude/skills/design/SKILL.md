@@ -172,8 +172,9 @@ Working rules:
 - Run /design-sync before designing when the repo holds real components, so
   screens use actual tokens instead of approximations.
 - One project per goal. Key screens plus the core flow, not every state.
-- Ask Claude Design for two alternative directions on the primary screen,
-  merge the strongest elements of both into one, then iterate on it once.
+- When DESIGN.md holds no `## Direction` yet, ask Claude Design for two
+  alternative directions on the primary screen, merge the strongest elements
+  of both into one, then iterate on it once. When it does, build from it.
 - Inline canvas comments occasionally fail to persist. When feedback matters,
   paste it into the design chat as well.
 - Finish with the internal share link (comment access) for the greenlight, and
@@ -188,6 +189,7 @@ Working rules:
 
 ## DESIGN.md format
 
+0. Direction: kept verbatim from the design-directions workflow when it ran.
 1. Information architecture: screens and navigation, ten lines maximum.
 2. Screen list: name, share link, local export path, one-line intent.
 3. Tokens: the color, type and spacing decisions that bind the builder.

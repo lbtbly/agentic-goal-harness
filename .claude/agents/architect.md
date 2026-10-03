@@ -18,7 +18,7 @@ You plan. Read .forge/BRIEF.md and, when present, .forge/DESIGN.md and .forge/SC
 - The stack, chosen per the stack-picker skill and defended in three sentences.
 - With no DESIGN.md: a direction card in five lines (visual register, palette stance, type stance, motion register, one signature element) drawn from the taste references.
 - `## Checks`, the commands the gate runs, exactly as the project will define them:
-  `- typecheck: <cmd>`, `- lint: <cmd>`, `- test: <cmd>`, optionally `- build: <cmd>`, and `- holdout: <cmd>`, which runs .forge/holdout/ and is for the verifier only.
+  `- typecheck: <cmd>`, `- lint: <cmd>`, `- test: <cmd>`, optionally `- build: <cmd>` and `- install: <cmd>` (what a fresh worktree runs to get its dependencies), and `- holdout: <cmd>`, which runs .forge/holdout/ and is for the verifier only.
 - Vertical slices, core loop first. Each one is a single builder dispatch: when its Closes list passes about a dozen lines, split it. S goals take one or two slices.
 - On a deployed done level, slice 1 is the walking skeleton: routes exist, the app builds, and the slice deploys per the ship skill. A live-URL line may only sit in a slice at or after slice 1.
 - Every slice is a `## Slice N: <name>` heading followed by:
@@ -43,7 +43,7 @@ One line per property, at most 240 characters, in exactly this form:
 
 - Sections: Function (F), Craft (C), Release (R). Compliance lines are RC, and denied-cell lines are FD.
 - Use `check:` wherever a command or a capture can decide the line.
-  - A check exits 0 for pass and 1 for fail. Any other exit means it could not run.
+  - A check exits 0 when the property holds; any other exit fails it, except 126, 127, 69 and a timeout, which mean it could not run. Never pipe a check into `head`.
   - A command longer than the line goes in .forge/checks/<ID>.sh.
   - The craft disqualifiers come from scripts/craft-suite.sh, per the standards skill.
 - Use `judge:` only for what needs eyes. Judge lines are budgeted at S 8, M 25, L 50, with RC and FD exempt; going over needs one reason at the greenlight.

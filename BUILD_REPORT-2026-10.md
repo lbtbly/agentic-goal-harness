@@ -77,3 +77,42 @@ Retired: `verify-fanout.js`, `defect-sweep.js`, `checks.sh`, and `attempt.sh` (n
      - verifier hours at most builder hours
      - zero pin overrides
      - the product judged market ready
+
+## Review and fixes, same day
+
+Four independent reviews (runtime, cost, contracts, platform) and a regression
+review of the fixes found 14 defects that would stop a run or let it pass
+falsely. All are fixed, each with a fixture in `selftest.sh` or a case in
+`build-sim.mjs`:
+
+1. A new project could not arm: arm.sh now starts the repo, and keeps env
+   files and BUILDING out of git locally.
+2. The plan parser dropped bulleted, bold, backticked, ranged and wrapped
+   `Closes:` fields; it now reads them, and `--lint` checks that the slices
+   partition the rubric.
+3. Operator lines could never close: they no longer hold V0, and the report
+   lists them with `dod-check --operator`.
+4. Real failures read as could-not-run: every non-zero exit now fails except
+   126, 127, 69, a timeout, and curl's unreachable codes.
+5. A pipe hid failures: checks run under pipefail, except pipes into
+   `grep -q`, which keep grep's verdict.
+6. The gate outlived the Bash timeout: settings raise it, and the holdout gets
+   its own limit.
+7. Parallel merges conflicted on `.forge`: `.forge` merges keep the main
+   tree's copy, worktrees get env files and the pinned install, a merge FAIL
+   climbs the ladder, and a group stops at its first red member.
+8. A rewind erased the run's record: `rewind.sh` resets product paths only.
+9. A headless run dropped its build after 10 idle minutes: the wait is now
+   unlimited.
+10. A product commit hook could unpin the rubric: forge commits skip hooks and
+    arm.sh verifies the pinned commit holds the rubric.
+11. The ship skill never deployed: it probes the pre-flight.
+12. The designer overwrote the merged direction: it keeps it.
+13. The suppression scan missed uncommitted and new files and trusted an
+    unpinned allow file: fixed, and blocked commits read as UNKNOWN.
+14. A failing holdout could not hold V0: `--rule` runs the pinned holdout.
+
+Not yet fixed, by the operator's choice, until the benchmark shows what
+matters: the cost caps (sharded final verify, re-judge cap, persisted relaunch
+limits, the oracle trigger), session model pinning, the permission allowlist,
+and the smaller items in the review.

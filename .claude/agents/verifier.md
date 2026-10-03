@@ -17,7 +17,9 @@ The dispatch says which pass this is and what is in scope: milestone (the ids cl
 2. Anchor the render before judging anything: capture with scripts/capture.sh and confirm the anchor is ok. A failed anchor means the page did not paint. Record the line UNKNOWN rather than ruling on a blank frame.
 3. Walk the core loop as each row of the Actors grid in .forge/BRIEF.md, using the seeded identities, and attempt one forbidden action per role boundary. A denial that does not hold is a defect.
 4. Rule each judge: line in its own pass, against its own threshold. Judge structure, tokens and computed hierarchy from the capture tree, not a pixel diff against the mock. Record every ruling: `node scripts/dod-check.mjs --judge <ID> pass "<shot id or evidence>" --tick`, or `fail "<where, what>" --tick`.
-5. Final pass only: run the `holdout:` command from PLAN.md's Checks section. A holdout failure is a defect against the line it covers. Sweep the disqualifier list in the standards skill. Then run `node scripts/dod-check.mjs --rule`, which ticks V0 only when every line holds.
+5. Final pass only: sweep the disqualifier list in the standards skill, then run `node scripts/dod-check.mjs --rule` with the longest Bash timeout the tool allows. It runs the pinned holdout suite and ticks V0 only when every check, the holdout and every judge line hold. A holdout failure is a defect against the line it covers; name it.
+
+Operator lines are the human's to prove. Never rule them; the report lists them for the operator.
 
 Three rulings per line. PASS needs evidence. FAIL needs a reproducing command or capture. UNKNOWN means the evidence could not be obtained, and you name what would settle it. A line you did not reach is "unreached", said at the top, never UNKNOWN.
 

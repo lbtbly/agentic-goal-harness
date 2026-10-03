@@ -55,7 +55,7 @@ const VERDICT = {
     summary: { type: 'string', description: 'Under 300 words' },
   },
 }
-const SHA = { type: 'object', required: ['sha'], properties: { sha: { type: 'string' } } }
+const SHA = { type: 'object', required: ['sha', 'root'], properties: { sha: { type: 'string' }, root: { type: 'string', description: 'git rev-parse --show-toplevel' } } }
 const SHOTS = {
   type: 'object', required: ['items'],
   properties: { items: { type: 'array', items: { type: 'object', required: ['path', 'route', 'loud'],
@@ -69,7 +69,7 @@ function buildPrompt (s, feedback, opts = {}) {
     `Build slice ${s.id} of .forge/PLAN.md: ${s.name}.`,
     `It closes: ${s.closes.join(', ') || 'no rubric lines'}.`,
     opts.inWorktree
-      ? `You are in a fresh worktree. First run: git reset --hard ${opts.base}. The base is already recorded; skip that step. Commit on a branch named forge-slice-${s.id} and return that branch name.`
+      ? `You are in a fresh worktree, which has none of the main tree's ignored files. First: git reset --hard ${opts.base}; copy the env files from ${opts.root} (its .env and .env.* files, never .env.example onto a real one); then ${(A.checks && A.checks.install) ? `run ${A.checks.install}` : 'install dependencies the way the project does'}. The base is already recorded; skip that step. Commit on a branch named forge-slice-${s.id} and return that branch name.`
       : (s.base ? 'The base is already recorded; skip that step.' : ''),
     clock,
     feedback ? `\n${feedback}` : '',
@@ -78,15 +78,15 @@ function buildPrompt (s, feedback, opts = {}) {
 
 const gate = (label, cmd) => agent(
   `Run exactly this from the project root, then stop: ${cmd}\n` +
-  'Do not fix, edit or explain anything, and do not run anything else. ' +
+  'Give the command the longest timeout the Bash tool allows. Do not fix, edit or explain anything, and do not run anything else. ' +
   'Return the verdict and the summary field from the JSON on its last line, verbatim.',
   { model: SONNET, effort: 'low', schema: GATE, label, phase: 'Build' },
 )
 
 async function runSlice (s, opts = {}) {
-  let fails = s.fails || 0
+  let fails = opts.fails != null ? opts.fails : (s.fails || 0)
   let partials = 0
-  let feedback = ''
+  let feedback = opts.feedback || ''
   for (;;) {
     const high = fails >= 2
     const model = high || s.tier !== 'light' ? OPUS : SONNET
@@ -160,7 +160,7 @@ async function confirm (v) {
 async function fixRound (ids, round) {
   const effort = round > 1 ? 'high' : 'medium'
   const built = await agent(
-    `Fix mode. The verifier failed these rubric lines: ${ids.join(', ')}. Read them with dod-check --show and the defect lines for them in .forge/DEFECTS.md. Fix exactly these, nothing else. The base is already recorded; skip that step.\n${clock}`,
+    `Fix mode. The verifier failed these rubric lines: ${ids.join(', ')}. Read them with dod-check --show and the defect lines for them in .forge/DEFECTS.md. First run scripts/commit.sh --now "forge: before fix" and then node scripts/attempt.mjs base fix $(git rev-parse HEAD) --force, so the gate can scan what the fix adds. Fix exactly these, nothing else.\n${clock}`,
     { agentType: 'builder', model: OPUS, effort, schema: BUILT, label: `fix ${ids.join(',')}`, phase: 'Fix' },
   )
   if (!built || built.status !== 'done') return { status: built ? built.status : 'blocked', note: built ? built.summary : 'no return' }
@@ -227,20 +227,32 @@ for (const g of groups) {
       }
     }
   } else {
-    // Parallel L group: both builders branch from the same commit, merge
-    // serially, and the gate runs on the main tree after each merge.
-    const head = await agent('Run `git rev-parse HEAD` and, for each slice id in ' + JSON.stringify(g.members.map(s => s.id)) +
-      ', run `node scripts/attempt.mjs base <id> <that sha>`. Return the sha.', { model: SONNET, effort: 'low', schema: SHA, label: `base group ${g.key}`, phase: 'Build' })
+    // Parallel group: the builders branch from one commit in worktrees and
+    // merge one at a time, the gate on the main tree after each. Main is
+    // committed first and each member's base is its own pre-merge commit, so
+    // a rewind of one member never takes a green sibling with it. A merge
+    // that fails its gate goes up the ladder on the main tree, like any slice.
+    const head = await agent('Run `git rev-parse HEAD` and `git rev-parse --show-toplevel`, and, for each slice id in ' + JSON.stringify(g.members.map(s => s.id)) +
+      ', run `node scripts/attempt.mjs base <id> <that sha>`. Return the sha and the top-level path.', { model: SONNET, effort: 'low', schema: SHA, label: `base group ${g.key}`, phase: 'Build' })
     if (!head) { halted = { id: g.key, status: 'blocked', note: 'could not read HEAD' }; break }
-    const built = await parallel(g.members.map(s => () => runSlice(s, { inWorktree: true, base: head.sha })))
+    const built = await parallel(g.members.map(s => () => runSlice(s, { inWorktree: true, base: head.sha, root: head.root })))
     for (let i = 0; i < g.members.length; i++) {
       const s = g.members[i]; const b = built[i]
       if (!b || b.status !== 'built') { report.push(b || { id: s.id, status: 'blocked', note: 'no return' }); halted = b || { id: s.id, status: 'blocked' }; continue }
-      const m = await gate(`merge ${s.id}`, `git merge --no-ff ${b.branch} -m "forge: merge slice ${s.id}" || { git merge --abort; echo '{"verdict":"FAIL","summary":"merge conflict, aborted"}'; exit 1; }; node scripts/gate.mjs ${s.id}`)
-      const r = { id: s.id, status: m && m.verdict === 'PASS' ? 'green' : 'stuck', note: m ? m.summary : 'no return' }
+      const m = await gate(`merge ${s.id}`, `scripts/commit.sh --now "forge: before merging slice ${s.id}"; node scripts/attempt.mjs base ${s.id} $(git rev-parse HEAD) --force && git merge --no-ff ${b.branch} -m "forge: merge slice ${s.id}" || { git merge --abort; echo '{"verdict":"FAIL","summary":"merge of ${b.branch} conflicted and was aborted; the slice is not on the main tree"}'; exit 1; }; node scripts/gate.mjs ${s.id}`)
+      let r
+      if (m && m.verdict === 'PASS') r = { id: s.id, status: 'green', note: b.note }
+      else if (!m || m.verdict === 'UNKNOWN') r = { id: s.id, status: 'blocked', note: m ? m.summary : 'the merge gate returned nothing' }
+      else {
+        log(`slice ${s.id}: merge gate FAIL, continuing the ladder on the main tree`)
+        r = await runSlice(s, { fails: 1, feedback: `Slice ${s.id} was built in a worktree, merged, and failed the gate on the main tree. If the merge was aborted, the slice is not on this tree: build it here. Fix exactly these first:\n${m.summary}` })
+      }
       report.push(r)
-      if (r.status === 'green') closed.push(...s.closes)
-      else halted = r
+      if (r.status === 'green') { closed.push(...s.closes); continue }
+      halted = r
+      // Later members stay unmerged in their worktrees and open in the ledger.
+      for (const rest of g.members.slice(i + 1)) report.push({ id: rest.id, status: 'unmerged', note: 'left unmerged after an earlier member halted' })
+      break
     }
     if (halted) break
   }

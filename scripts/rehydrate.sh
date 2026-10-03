@@ -19,6 +19,7 @@ fi
 [ -f .forge/RUNLOG.md ] && { echo "--- LAST RUNLOG ---"; tail -3 .forge/RUNLOG.md; }
 [ -f .forge/PARKED ] && { echo "--- PARKED ---"; cat .forge/PARKED; }
 [ -f .forge/COMMIT-BLOCKED ] && { echo "--- COMMITS BLOCKED ---"; cat .forge/COMMIT-BLOCKED; }
+[ -f .forge/LEAK-WARNING ] && { echo "--- SECRETS HELD BACK ---"; cat .forge/LEAK-WARNING; }
 
 # A workflow dies with the session that launched it. On a fresh start or a
 # resume, a BUILDING marker can only be stale; on compact or clear the

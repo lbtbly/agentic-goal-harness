@@ -24,7 +24,7 @@
 export const meta = {
   name: 'design-directions',
   description: 'Generate five per-goal design directions, merge the best of all five, iterate once',
-  whenToUse: 'DESIGN phase, opt-in: L goals, or M when the taste references pull in different directions',
+  whenToUse: 'DESIGN phase on M and L, unless the taste references already fix a single direction',
   phases: [
     { title: 'Stratify', detail: 'five semantic strata for THIS goal' },
     { title: 'Generate', detail: 'one direction per stratum, in parallel' },

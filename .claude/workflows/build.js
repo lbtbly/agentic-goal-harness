@@ -203,7 +203,10 @@ for (const s of slices) {
 const closed = []
 let halted = null
 for (const g of groups) {
-  const parallelOk = A.size === 'L' && g.members.length > 1 && g.members.length <= 3
+  // Two or three builders at once, on M and L, when the architect grouped
+  // their slices. A larger group runs serially, and says so.
+  const parallelOk = A.size !== 'S' && g.members.length > 1 && g.members.length <= 3
+  if (A.size !== 'S' && g.members.length > 3) log(`group ${g.key}: ${g.members.length} slices exceed the cap of 3, running serially`)
   if (!parallelOk) {
     for (const s of g.members) {
       const r = await runSlice(s)

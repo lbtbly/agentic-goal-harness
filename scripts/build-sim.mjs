@@ -129,8 +129,17 @@ const PASSV = { verdict: 'PASS', failing: [], summary: 'ok' }
   const merges = r.calls.filter(c => c.label && c.label.startsWith('merge'))
   check(merges.length === 2 && merges.every(c => c.prompt.includes('gate.mjs')), 'each worktree merges then runs the gate on the main tree')
   check(r.out.done, 'the parallel group completes')
-  const s = await sim('parallel-M', { slices: [sl('1'), a, b], size: 'M' }, c => c.agentType === 'builder' ? { status: 'done', summary: 'b' } : c.label && c.label.startsWith('gate') ? { verdict: 'PASS', summary: 'g' } : PASSV)
-  check(!s.calls.some(c => c.isolation), 'an M run never parallelises, whatever the groups say')
+  const m = await sim('parallel-M', { slices: [sl('1'), a, b], size: 'M' }, c => {
+    if (c.label === 'base group g') return { sha: 'deadbeef' }
+    if (c.agentType === 'builder') return { status: 'done', summary: 'b', branch: c.isolation ? 'forge-slice-x' : undefined }
+    if (c.label && (c.label.startsWith('gate') || c.label.startsWith('merge'))) return { verdict: 'PASS', summary: 'g' }
+    return PASSV
+  })
+  check(m.calls.filter(c => c.isolation === 'worktree').length === 2 && m.out.done, 'an M run parallelises a grouped pair')
+  const s = await sim('parallel-S', { slices: [sl('1'), a, b], size: 'S' }, c => c.agentType === 'builder' ? { status: 'done', summary: 'b' } : c.label && c.label.startsWith('gate') ? { verdict: 'PASS', summary: 'g' } : PASSV)
+  check(!s.calls.some(c => c.isolation), 'an S run never parallelises, whatever the groups say')
+  const big = await sim('parallel-4', { slices: ['2', '3', '4', '5'].map(id => sl(id, { group: 'g' })), size: 'M' }, c => c.agentType === 'builder' ? { status: 'done', summary: 'b' } : c.label && c.label.startsWith('gate') ? { verdict: 'PASS', summary: 'g' } : PASSV)
+  check(!big.calls.some(c => c.isolation) && big.out.done, 'a group over the cap of three runs serially')
 }
 // 10b. A designed run gets the blind squint before the final verify, once.
 {

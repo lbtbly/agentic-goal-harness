@@ -666,7 +666,7 @@ ever uses Fable.</p>
 <table>
 <tr><th>Workflow</th><th>Runs</th><th>Does</th></tr>
 <tr><td><code>build.js</code></td><td>on every armed run: after arming, after each re-slice, and on every <code>/forge resume</code></td><td>one builder per open slice, <code>gate.mjs</code> after each, the ladder in code, the milestone verifier after the core-loop slice, and the final verifier with one re-judge and one fix round. Its args come from <code>slices.mjs --open</code>; <code>fixIds</code> runs only a fix round and a final verify. It returns done, or halted with the slice and the reason</td></tr>
-<tr><td><code>design-directions.js</code></td><td>at DESIGN, opt-in: L goals, or M when the taste references pull in different directions</td><td>stratifies five design positions for this goal, generates one direction each in parallel, merges the best of all five into one, and iterates once. It never crowns a winner: merging plus one iteration beat picking the best</td></tr>
+<tr><td><code>design-directions.js</code></td><td>at DESIGN on M and L, unless the taste references already fix a single direction</td><td>stratifies five design positions for this goal, generates one direction each in parallel, merges the best of all five into one, and iterates once. It never crowns a winner: merging plus one iteration beat picking the best</td></tr>
 </table>
 
 <p>Retired with v2: <code>verify-fanout.js</code>, one agent per rubric line,
@@ -819,7 +819,7 @@ accept the trust prompt</td></tr>
 <dt>Skill</dt><dd>knowledge loaded on demand; costs no context until used.</dd>
 <dt>MCP server</dt><dd>an external tool connection; forge uses claude-design.</dd>
 <dt>Workflow</dt><dd>a script that runs agents with control flow in code. Forge has two, build and design-directions, and only the lead launches them.</dd>
-<dt>Worktree</dt><dd>an isolated copy of the repo so parallel builders never collide (L goals).</dd>
+<dt>Worktree</dt><dd>an isolated copy of the repo so parallel builders never collide (M and L goals, two or three at a time).</dd>
 <dt>Slice</dt><dd>one vertical piece of the plan, crossing every layer, sized for one builder dispatch. Marked standard or light, and closes a named set of rubric lines.</dd>
 <dt>Rubric, DoD</dt><dd>the Definition of Done in DOD.md; every line a checkbox with proof behind it.</dd>
 <dt>check, judge, operator</dt><dd>the three kinds of rubric line: a command that exits 0 for pass and 1 for fail, a ruling by the verifier against a stated threshold, and a proof only you can supply. Judge lines are budgeted at S 8, M 25, L 50.</dd>

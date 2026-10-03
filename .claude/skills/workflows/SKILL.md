@@ -16,11 +16,11 @@ Only the lead runs workflows. No seat carries the Agent tool.
 - FAIL 2: the builder on Opus at high effort.
 - FAIL 3: stuck, which goes back to the lead.
 
-It runs the milestone verifier after the core-loop slice and the final verifier after the last slice. A failed judge line is re-judged once in a fresh context, then gets one fix round.
+On M and L, slices the architect grouped run two or three at a time in worktrees, merged one by one with the gate between. It runs the milestone verifier after the core-loop slice and the final verifier after the last slice. A failed judge line is re-judged once in a fresh context, then gets one fix round.
 
 The lead launches it in the background with `node scripts/slices.mjs --open` as args. The ladder's count lives on disk, so a relaunch resumes at the right rung. `args.fixIds` runs a fix round and a final verify only.
 
-**design-directions** (`.claude/workflows/design-directions.js`), opt-in on L, or on M when the taste references pull in different directions. It stratifies five positions for this goal, generates one direction each, merges the best of all five into one, and iterates once. It never crowns a winner.
+**design-directions** (`.claude/workflows/design-directions.js`), the default at DESIGN on M and L, skipped only when the taste references already fix a single direction. It stratifies five positions for this goal, generates one direction each, merges the best of all five into one, and iterates once. It never crowns a winner.
 
 ## Rules for adding one
 

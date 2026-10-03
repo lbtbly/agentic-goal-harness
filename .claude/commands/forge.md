@@ -48,7 +48,7 @@ the verifier has rows to walk.
 
 - **S that runs locally:** no design phase. The architect writes a direction card.
 - **S deployed:** no design now. PLAN.md proposes one designer dispatch as the first build step, working from the brief's taste references on one key screen. Plain approval keeps it; "approve, skip design" strikes it.
-- **M and L:** dispatch the designer with the brief, after stripping the provenance tags from the Actors grid. Run the design-directions workflow first only on L, or when the taste references pull in different directions.
+- **M and L:** dispatch the designer with the brief, after stripping the provenance tags from the Actors grid. Run the design-directions workflow first, unless the taste references already fix a single direction.
 - **Squint (M and L).** Blur each exported screen, then dispatch the design-critic with the blurred paths only:
 
       sips -Z 44 .forge/screens/NN-name.png --out /tmp/sq.png && sips -Z 900 /tmp/sq.png --out .forge/squint/NN-name.png
@@ -137,7 +137,7 @@ When nothing actionable remains, write to RESUME.md what the run is waiting on: 
 
 Only through the oracle seat, only on the triggers above, and never past the cap in .forge/ARMED. Log every call to RUNLOG.md with its trigger before making it. Never enable /advisor for a run.
 
-## Parallel builders (L only)
+## Parallel builders (M and L)
 
 Two or three builders may run at once when the architect put their slices in one group. The workflow runs that contract:
 - Write scopes are disjoint and no slice claims a shared surface.

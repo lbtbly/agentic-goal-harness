@@ -18,8 +18,9 @@ nine hooks, and one human gate: the greenlight.
    commit, so the bar cannot be edited after approval either.
 4. Simple stays simple. S goals get one or two slices, one builder dispatch
    each, and one verifier: no scout, no worktrees, no workflows beyond build.
-   M adds the scout, the designer and a milestone verify. L adds parallel
-   builders when scopes are disjoint, and the design-directions workflow. The
+   M and L add the scout, the designer, the design-directions workflow,
+   two or three parallel builders when scopes are disjoint, and a milestone
+   verify. The
    designer follows the done level, not the size: an S goal shipping beyond
    the local machine is planned with one designer dispatch, kept or struck at
    the greenlight.

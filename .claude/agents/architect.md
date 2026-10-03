@@ -26,7 +26,7 @@ You plan. Read .forge/BRIEF.md and, when present, .forge/DESIGN.md and .forge/SC
   - `Tier: standard` or `Tier: light`. Light is copy, config, docs or a mechanical change, and runs on Sonnet.
   - `Confidence: high` or `Confidence: low`. Low is honest, and it triggers a Fable plan audit.
   - `Scope:` the write scope: the routes and modules it may touch, plus any shared surface it claims (tokens, component library, API client, shared types, schema and migrations, router, auth).
-  - `Group: N`. Slices share a group only on L, only when their scopes are disjoint and neither claims a shared surface. The contract between them is written and committed before either is dispatched.
+  - `Group: N`. Slices share a group only on M and L, two or three at most, only when their scopes are disjoint and neither claims a shared surface. The contract between them is written and committed before either is dispatched.
   - `Milestone: yes` on exactly one slice on M and L: the one that completes the core loop.
   - `Closes: <ids>`. Across all slices the lists partition DOD.md exactly, except V0 and operator lines.
 - Plan for every role, not only end users: moderation and notice queues, abuse and rate limits, backup and restore, and how the operator learns something broke. Name what the free tier cannot carry.

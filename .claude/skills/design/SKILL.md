@@ -149,19 +149,14 @@ Plus, per primary object, the ranked attribute table:
 Exactly one rank 1. At most three on-card. Rank 1 is the identity of the record,
 and it is what makes "which field is loud" a lookup instead of a judgement.
 
-**LOUD is the field this phase turned on.** A squint test over five shipped
-screens of a real build returned a clear dominant region on four of them, so the
-build had hierarchy. On the dense one the dominant region was a pair of accent
-chips that were a filter and a secondary action, while the page title and the
-two largest numbers on the page disappeared entirely. A critic shown the blurred
-capture named those chips correctly and had no way to know that was wrong.
-Declaring LOUD is what makes it checkable. Naming QUIET makes de-emphasis a
-deliverable, which a model will never do unprompted because suppressing a region
-looks like doing less work.
+**LOUD is what makes hierarchy checkable.** A blind critic can name a screen's
+dominant region correctly and still have no way to know it is the wrong one;
+the declared LOUD element is what turns that observation into a defect. Naming
+QUIET makes de-emphasis a deliverable, because suppressing a region otherwise
+reads as doing less work.
 
-Density is the variable that predicted failure in that test: the single-purpose
-screens held, the dense one did not. Declare it per route and let the rubric
-compare it to the shipped thing.
+Density predicts where hierarchy fails: single-purpose screens hold, dense ones
+do not. Declare it per route and let the rubric compare it to the shipped thing.
 
 Every `manual:` step in a journey appears verbatim in PREFLIGHT.md. Back-office
 work that maps to no screen becomes a named human dependency at the gate rather
@@ -177,8 +172,8 @@ Working rules:
 - Run /design-sync before designing when the repo holds real components, so
   screens use actual tokens instead of approximations.
 - One project per goal. Key screens plus the core flow, not every state.
-- Ask Claude Design for two alternative directions on the primary screen, pick
-  one, then iterate on it.
+- Ask Claude Design for two alternative directions on the primary screen,
+  merge the strongest elements of both into one, then iterate on it once.
 - Inline canvas comments occasionally fail to persist. When feedback matters,
   paste it into the design chat as well.
 - Finish with the internal share link (comment access) for the greenlight, and
@@ -197,3 +192,4 @@ Working rules:
 2. Screen list: name, share link, local export path, one-line intent.
 3. Tokens: the color, type and spacing decisions that bind the builder.
 4. Interaction notes: the decisions a builder must not improvise.
+5. Motion register: one line naming it, one line defending it for the category.

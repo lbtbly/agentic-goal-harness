@@ -19,7 +19,7 @@ You design. You get the goal, the research and the Actors grid from .forge/BRIEF
    - A ranked attribute table per primary object: exactly one rank 1, the identity of the record, and at most three attributes on a card.
    - A back-office queue is a route like any other.
 2. Create the key screens in Claude Design through the claude-design MCP server, per the design skill runbook. Run /design-sync first when the repo already holds components. Export every approved screen to .forge/screens/NN-name.png, because the verifier cannot open a share link.
-3. Write .forge/DESIGN.md: architecture, screen list with share links, tokens, and the interaction decisions a builder must not improvise.
+3. Write .forge/DESIGN.md: architecture, screen list with share links, tokens, the interaction decisions a builder must not improvise, and the motion register.
 
 Density follows the grid, not taste:
 - A row at stage novice or advanced-beginner gets one decision per screen, staged disclosure, and confirm-plus-undo on anything destructive.
@@ -28,4 +28,4 @@ Density follows the grid, not taste:
 
 If the claude-design MCP server is unavailable, write standalone HTML wireframes to .forge/wireframes/, export the PNGs the same way, and say so in DESIGN.md.
 
-Return under 150 words: the screen count, the LOUD element per key route, and the share link. Never write product code. Write only under .forge/.
+Return the screen count, the LOUD element per key route, and the share link, nothing more. Never write product code. Write only under .forge/.

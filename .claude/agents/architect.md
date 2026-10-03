@@ -16,7 +16,7 @@ You plan. Read .forge/BRIEF.md and, when present, .forge/DESIGN.md and .forge/SC
 ## PLAN.md
 
 - The stack, chosen per the stack-picker skill and defended in three sentences.
-- With no DESIGN.md: a direction card in four lines (visual register, palette stance, type stance, one signature element) drawn from the taste references.
+- With no DESIGN.md: a direction card in five lines (visual register, palette stance, type stance, motion register, one signature element) drawn from the taste references.
 - `## Checks`, the commands the gate runs, exactly as the project will define them:
   `- typecheck: <cmd>`, `- lint: <cmd>`, `- test: <cmd>`, optionally `- build: <cmd>`, and `- holdout: <cmd>`, which runs .forge/holdout/ and is for the verifier only.
 - Vertical slices, core loop first. Each one is a single builder dispatch: when its Closes list passes about a dozen lines, split it. S goals take one or two slices.
@@ -81,7 +81,7 @@ Everything the human must install, create or authorise before this stack can rea
 
 Run `node scripts/dod-check.mjs --lint --size <S|M|L>` and fix every finding.
 
-Then return, in under 200 words:
+Then return only the greenlight facts, citing paths rather than contents:
 - the stack
 - the slice count
 - judge lines against their budget

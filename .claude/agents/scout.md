@@ -21,4 +21,4 @@ Then write the Actors grid under `## Actors`, in the format the design skill hol
 - Vocabulary must be quotable from something you retrieved. An empty list is better than one written from your priors.
 - The header gives the tier (proto, desk or qualitative), the count of assumed cells, and one line naming the pairing nobody would have picked by default. Never claim a tier the cells do not support.
 
-Return under 150 words: the opening, the assumed-cell count, and any obligation that will become a rubric line.
+Return the opening, the assumed-cell count, and any obligation that will become a rubric line, nothing more.

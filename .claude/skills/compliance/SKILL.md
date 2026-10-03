@@ -16,8 +16,9 @@ Three rules govern how this lands:
    a rubric line. "An export and a deletion completed in a real session,
    captured" is.
 2. **Verify before you write.** This file was accurate on 16 August 2026 and
-   decays from that date. The scout confirms current status for the target
-   market at plan time. Never quote this file as authority.
+   decays from that date. At plan time the scout confirms current status for
+   the target market, or the architect on S goals, which have no scout. Never
+   quote this file as authority.
 3. **Engineering hygiene, not legal advice.** Real exposure (large user base,
    sensitive categories, minors at scale, a novel model use, anything
    high-risk under the AI Act) gets a lawyer before launch, and that review is
@@ -112,7 +113,7 @@ transport, ebooks, and adjacent categories)
 
 Dates below were correct on 16 August 2026. Confirm each at plan time.
 
-**11 September 2026, Cyber Resilience Act, reporting obligations.**
+**In force since 11 September 2026: Cyber Resilience Act, reporting obligations.**
 Manufacturers of products with digital elements placed on the EU market must
 report actively exploited vulnerabilities and severe incidents: early warning
 within 24 hours, full notification within 72 hours, a final report within 14
@@ -155,7 +156,7 @@ banner is a swap rather than a rewrite.
 
 ## Verification protocol
 
-At plan time the scout confirms, for the target market: whether each fired
+At plan time the scout (the architect on S) confirms, for the target market: whether each fired
 trigger still applies, whether any horizon date has moved, and whether the
 product's classification has changed. Primary sources first, official
 regulator pages over commentary. Where a date is contested or a proposal sits

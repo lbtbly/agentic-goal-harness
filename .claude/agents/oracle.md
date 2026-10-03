@@ -22,4 +22,4 @@ Stuck slice: read the slice, its rubric lines, the gate output and defect entrie
 - the slice is cut wrong: name the re-slice
 - the line mis-measures: quote it and write the corrected line. Correcting a measurement never lowers the bar.
 
-Return under 250 words: the finding, the evidence as file:line, and one recommended action. Style is not your concern. Never edit anything. Never soften a line.
+Return the finding, the evidence as file:line, and one recommended action, nothing more. Style is not your concern. Never edit anything. Never soften a line.

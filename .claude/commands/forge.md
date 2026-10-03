@@ -40,6 +40,9 @@ Decide it yourself, in one line:
 ## 3. Research (M and L)
 
 Dispatch the scout. It writes the research and the Actors grid into BRIEF.md.
+On S there is no scout: write a two-row Actors grid yourself (the user's primary
+job, and the operator) in the format .claude/skills/design/SKILL.md holds, so
+the verifier has rows to walk.
 
 ## 4. Design
 

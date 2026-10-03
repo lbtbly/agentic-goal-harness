@@ -83,34 +83,32 @@ asked is not an FAQ entry.
 
 Product docs pass the same copy bar as product copy. Nothing above exempts them.
 
-THE HARNESS'S OWN README IS NOT THE PRODUCT'S README. One build shipped Forge's
-starter scaffold README verbatim inside the product, so a stranger cloning a
-collection-tracking app was told it had seven seats, nine hooks and a greenlight.
-Wrong documentation is worse than none, because none is obviously missing.
+The harness's own README is never the product's README. Wrong documentation is
+worse than none, because none is obviously missing.
 
 ## Personal rules
-<!-- SLOT 1: Value before the wall.
-     A first-time user completes the core action at least once before any
-     signup, paywall, or permission prompt. Accounts exist to save progress,
-     never to unlock the first taste.
-     Evidence: a clean-session capture series showing the core action
-     completed with no account. -->
-<!-- SLOT 2: Motion is calibrated to the category, and declared before it is
-     built. DESIGN.md states the motion register and defends it in one line.
-     Minimal and functional for business and finance, with at most one moment
-     of enchantment, placed at completion. Expressive and characterful for
-     creative, entertainment, travel, and collecting. The build matches the
-     declared register; no drift, no default library flourish.
-     Evidence: the register line in DESIGN.md plus a capture of the signature
-     transition. -->
-<!-- SLOT 3: Text is designed, not filled in.
-     Voice: direct, concrete, rhythmic. Verbs over nouns. No filler openers,
-     no hedging, no marketing air, no em dashes, no acronym stacks, no
-     invented urgency. Every string earns its space; if it does not survive
-     being read aloud, it is not shipped.
-     Structure: English ships first and every product is built to add
-     languages later. No hardcoded strings, no text baked into images,
-     layouts hold at 40 percent text expansion, and dates, numbers and
-     currency are locale-aware from the first commit.
-     Evidence: the string inventory, plus pseudo-locale screenshots at 40
-     percent expansion showing no clipping or overflow. -->
+
+The operator's own bar. Each rule becomes rubric lines, with the evidence it names.
+
+**Value before the wall.** A first-time user completes the core action at least
+once before any signup, paywall, or permission prompt. Accounts exist to save
+progress, never to unlock the first taste. Evidence: a clean-session capture
+series showing the core action completed with no account.
+
+**Motion is calibrated to the category, and declared before it is built.**
+DESIGN.md states the motion register and defends it in one line. Minimal and
+functional for business and finance, with at most one moment of enchantment,
+placed at completion. Expressive and characterful for creative, entertainment,
+travel, and collecting. The build matches the declared register; no drift, no
+default library flourish. Evidence: the register line in DESIGN.md plus a
+capture of the signature transition.
+
+**Text is designed, not filled in.** Voice: direct, concrete, rhythmic. Verbs
+over nouns. No filler openers, no hedging, no marketing air, no em dashes, no
+acronym stacks, no invented urgency. Every string earns its space; if it does
+not survive being read aloud, it is not shipped. Structure: English ships first
+and every product is built to add languages later. No hardcoded strings, no text
+baked into images, layouts hold at 40 percent text expansion, and dates, numbers
+and currency are locale-aware from the first commit. Evidence: the string
+inventory, plus pseudo-locale screenshots at 40 percent expansion showing no
+clipping or overflow.

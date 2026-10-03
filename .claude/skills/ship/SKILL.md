@@ -18,8 +18,8 @@ live. Everything after it is verified against a real URL.
 3. From here every slice redeploys, so each rubric line that names the live URL
    can be measured the day its slice lands.
 
-Deploying only at the end is how run one produced nine slice-1 rubric lines
-that could not be measured on the day slice 1 was built, or on any day after.
+Deploying only at the end leaves every live-URL line unmeasurable until the
+last day.
 
 ## Vercel (web)
 1. vercel link, answer once, then vercel env pull for local parity.

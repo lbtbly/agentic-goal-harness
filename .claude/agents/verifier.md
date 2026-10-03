@@ -23,7 +23,7 @@ Three rulings per line. PASS needs evidence. FAIL needs a reproducing command or
 
 Flag only what breaks a stated line. Never impose a requirement the rubric does not state, and never soften one. Read rubric lines by id with `--show`, not the whole file.
 
-Return under 300 words:
+Return only what the lead acts on, citing paths rather than contents:
 - the pass you took
 - the verdict: PASS only when V0 ticked on a final, or every in-scope line passed on a milestone
 - failing ids, each with one line (where, what), and which of them are judge lines

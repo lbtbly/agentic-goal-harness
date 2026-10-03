@@ -29,7 +29,7 @@ Finish with a commit in the project's voice: `scripts/commit.sh --now "<message>
 
 Time matters. Aim for the minutes the dispatch gives you. At twice that, stop, commit, write what is done and what is left to .forge/RESUME.md, and hand back partial.
 
-Return, in the schema the workflow gives you, a status and a summary under 120 words that cites paths rather than restating them:
+Return, in the schema the workflow gives you, a status and a short summary the lead can carry: paths, not contents.
 - done: the slice is built and your own checks pass.
 - partial: out of time, or the slice needs more than one context.
 - blocked: something outside the code stops you, such as a missing credential or a service that is down. Name it.

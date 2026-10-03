@@ -59,5 +59,5 @@ feature forces one.
 
 ## Rules
 - One stack per goal. Polyglot is an L-goal decision, never a default.
-- Prefer platforms with a one-command deploy; the finisher depends on it.
+- Prefer platforms with a one-command deploy; slice 1 and the ship step depend on it.
 - Note the deploy target in PLAN.md so the ship skill runbook matches.

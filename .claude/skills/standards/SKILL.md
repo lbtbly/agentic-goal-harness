@@ -8,6 +8,27 @@ description: The quality bar every forge rubric draws from. Market ready, not mi
 Rubric sources. The architect turns these into checkable lines; the verifier
 holds them.
 
+## Rubric mechanics
+
+- One line per property: `- [ ] <ID> | <property> | check: <command>`, or
+  `judge: <what, threshold>`, or `operator: <what the human proves>`, at most
+  240 characters. The last line is `- [ ] V0 | final verifier PASS | rule`.
+- A check exits 0 for pass and 1 for fail. Any other exit is could-not-run,
+  which rules UNKNOWN and is never green. Wrap a tool whose exit codes differ:
+  `grep -q` exits 1 on no match, which is a pass for a "nothing found" line,
+  so write `! grep -q ...` or a script in .forge/checks/<ID>.sh.
+- Checks run from the armed commit through scripts/dod-check.mjs. Write them
+  to run from the project root on a fresh checkout, against a URL or a
+  build, never against the builder's memory of one.
+- The craft disqualifiers are one or two check lines, not twenty prose lines:
+  `scripts/craft-suite.sh [--serve "<start cmd>"] [--a11y] <base-url> <route>...`
+  covers render anchors, console errors, failed requests, overflow at 320, 768
+  and 1280, heading order, placeholder and TODO markers, a tracked icon, and
+  verification debris. `--a11y` adds axe-core: zero serious or critical.
+- Judge lines are for what only eyes can decide: hierarchy against the
+  declared LOUD element, copy voice, motion register, taste fit. Budget: S 8,
+  M 25, L 50, compliance (RC) and denied-cell (FD) lines exempt.
+
 ## Craft
 - Spacing on a consistent scale, one type system, aligned everything.
 - Real states on every screen: loading, empty, error, offline where relevant.
@@ -52,7 +73,7 @@ By done level:
   Prerequisites, one command, what success looks like, the three things most
   likely to go wrong. Nothing else.
 - deployed live: the above, plus user-facing help covering every core-loop
-  screen, plus an FAQ, plus a CHANGELOG the finisher appends to at ship.
+  screen, plus an FAQ, plus a CHANGELOG appended at ship.
 - deployed plus launch assets: the above, plus the support surface the store
   listing or the landing page points at.
 

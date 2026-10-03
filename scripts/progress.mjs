@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Renders .forge/PROGRESS.html from the state files. Called by runlog.sh,
-// checkpoint.sh, and evidence.sh; safe to run by hand. No-ops without .forge/.
+// Renders .forge/PROGRESS.html from the state files. Called by gate.mjs once
+// per slice and by checkpoint.sh at session end; safe by hand. No-ops without .forge/.
 // Wallboard layout in the Dark Bench style (styles-library): matte graphite,
 // dotted canvas, one rationed green. Fills one screen, no scroll.
 // The state files stay the source of truth; this file only draws them.
@@ -824,17 +824,17 @@ inPlay = inPlay.sort((a, b) => playRank(a) - playRank(b)).slice(0, 8)
 // earliest keyword, with .md filenames stripped so PLAN.md is not read as PLAN.
 const PHASES = [
   ['Intake', /intake/i, 'three questions'],
-  ['Size', /\bsize\b|router/i, 'S, M, or L'],
+  ['Size', /\bsize\b/i, 'S, M, or L'],
   ['Scout', /scout/i, 'market + rules'],
-  ['Design', /design\b(?!\.md)/i, 'panel + screens'],
+  ['Design', /design\b(?!\.md)/i, 'screens + squint'],
   ['Plan', /\bplan\b|architect/i, 'slices + rubric'],
   ['Gate + arm', /greenlight|arm\b/i, 'the one stop'],
-  ['Build', /build|slice|builder/i, 'slice by slice'],
+  ['Build', /build|slice|builder/i, 'workflow + gate'],
   ['Verify', /verif/i, 'evidence rules'],
-  ['Ship', /ship|deploy|finisher/i, 'deploy + report'],
+  ['Ship', /ship|deploy/i, 'deploy + report'],
 ]
 const nextAction = (resume.match(/Next action:\s*([^\n]*)/i) || [, ''])[1]
-const numMap = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 5, 8: 6, 9: 7, 10: 8 }
+const numMap = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 4, 7: 5, 8: 6, 9: 8 }
 let active = -1
 const num = nextAction.match(/^\s*(\d+)\b/)
 if (num && numMap[+num[1]] !== undefined) active = numMap[+num[1]]
@@ -1177,7 +1177,7 @@ const runEntries = runlog.trim() ? runlog.trim().split('\n').map(l => {
   const m = l.match(/^(\S+) \| (\S+) \| [^|\n]*(?:\| *(\d+)s)?\s*$/)
   return m ? { t: Date.parse(m[1]), a: m[2], el: m[3] ? +m[3] * 1000 : null } : null
 }).filter(e => e && !isNaN(e.t)) : []
-const SEATS = ['router', 'scout', 'designer', 'architect', 'builder', 'verifier', 'finisher']
+const SEATS = ['scout', 'designer', 'design-critic', 'architect', 'builder', 'verifier', 'oracle']
 const typeCounts = {}
 for (const a of treeAgents) typeCounts[a.type] = (typeCounts[a.type] || 0) + 1
 const anonStops = runEntries.filter(e => !SEATS.includes(e.a)).length
@@ -1197,7 +1197,7 @@ const anonStops = runEntries.filter(e => !SEATS.includes(e.a)).length
 // it, and this becomes the fallback for the logs written before it did.
 const IDLE_MS = 15 * 60000
 const PHASE_OF = { builder: 'build', verifier: 'verify', architect: 'other', designer: 'other',
-  scout: 'other', router: 'other', finisher: 'other' }
+  scout: 'other', 'design-critic': 'other', oracle: 'other' }
 const spanTotals = { build: 0, verify: 0, other: 0 }
 const spanToday = { build: 0, verify: 0, other: 0 }
 const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)

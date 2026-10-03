@@ -1,6 +1,9 @@
 ---
 name: launch-kit
-description: Launch asset checklist the finisher produces when the done level includes it.
+description: Launch asset checklist for a forge run whose done level includes launch assets. Runs forked, on Sonnet.
+context: fork
+model: claude-sonnet-5-5
+effort: medium
 ---
 
 # Launch kit

@@ -36,11 +36,14 @@ const MANIFEST = 'MANIFEST.json'
 // PROMPT and BUILD_REPORT deliberately do NOT: one build shipped this repo's
 // README verbatim inside a product.
 const TRACKED = [
-  { dir: 'scripts', match: f => /\.(sh|mjs)$/.test(f) && f !== 'selftest.sh' && f !== 'manifest.mjs' && f !== 'guard-test.sh' },
+  { dir: 'scripts', match: f => /\.(sh|mjs)$/.test(f) && f !== 'selftest.sh' && f !== 'manifest.mjs' && f !== 'guard-test.sh' && f !== 'build-sim.mjs' },
   { dir: '.claude/agents', match: f => f.endsWith('.md') },
   { dir: '.claude/skills', match: f => f.endsWith('.md'), recurse: true },
   { dir: '.claude/workflows', match: f => f.endsWith('.js') },
   { dir: '.claude/commands', match: f => f.endsWith('.md') },
+  // The hooks live here. A target on the old settings runs the old hooks no
+  // matter how current its scripts are.
+  { dir: '.claude', match: f => f === 'settings.json' },
 ]
 
 const sha = p => createHash('sha256').update(readFileSync(p)).digest('hex')
@@ -108,13 +111,22 @@ for (const [f, want] of Object.entries(current.files)) {
   rows.push({ f, state: wasRecorded && have === wasRecorded ? 'stale' : 'edited' })
 }
 
+// Orphans: files the harness no longer ships but the target still holds. A
+// deleted seat left behind keeps its description, and the lead can still pick
+// it. Reported, never deleted here: the operator removes them.
+// Only files a recorded manifest says the harness once installed count: a
+// product's own scripts/deploy.sh is not an orphan.
+for (const f of Object.keys(recorded?.files || {})) {
+  if (!(f in current.files) && existsSync(join(target, f))) rows.push({ f, state: 'orphan' })
+}
+
 const by = s => rows.filter(r => r.state === s)
-const counts = ['current', 'stale', 'edited', 'unknown', 'absent'].map(s => [s, by(s).length])
+const counts = ['current', 'stale', 'edited', 'unknown', 'absent', 'orphan'].map(s => [s, by(s).length])
 
 if (cmd === 'check') {
   console.log(`\n${target}`)
   for (const [s, n] of counts) console.log(`  ${s.padEnd(8)} ${n}`)
-  for (const s of ['absent', 'unknown', 'edited', 'stale']) {
+  for (const s of ['absent', 'unknown', 'edited', 'stale', 'orphan']) {
     for (const r of by(s)) console.log(`  ${s.padEnd(8)} ${r.f}`)
   }
   if (!recorded) {
@@ -143,6 +155,7 @@ if (cmd === 'sync') {
   let wrote = 0, kept = 0
   for (const r of rows) {
     if (r.state === 'current') continue
+    if (r.state === 'orphan') { kept++; console.log(`  orphan  ${r.f}  (no longer shipped; remove it by hand)`); continue }
     if (r.state === 'edited' && !force) { kept++; console.log(`  kept    ${r.f}  (edited in the target)`); continue }
     if (r.state === 'unknown' && !(force || adopt)) { kept++; console.log(`  kept    ${r.f}  (no baseline, cannot tell an edit from drift)`); continue }
     const dest = join(target, r.f)
@@ -160,6 +173,9 @@ if (cmd === 'sync') {
     const tf = join(target, f)
     if (existsSync(tf)) stamped.files[f] = sha(tf)
   }
+  // An orphan stays in the record until it is gone from disk, so the next
+  // check still names it.
+  for (const r of by('orphan')) stamped.files[r.f] = sha(join(target, r.f))
   mkdirSync(join(target, '.forge'), { recursive: true })
   writeFileSync(recordedPath, JSON.stringify(stamped, null, 2) + '\n')
   console.log(`\n  ${wrote} written, ${kept} kept, manifest stamped at .forge/${MANIFEST}`)

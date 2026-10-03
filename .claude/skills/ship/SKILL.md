@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Deploy runbooks the finisher follows. Vercel for web, EAS and TestFlight for mobile.
+description: Deploy runbooks for a forge run: slice 1's walking skeleton and the final ship. Vercel for web, EAS and TestFlight for mobile.
 ---
 
 # Ship
@@ -53,7 +53,7 @@ that could not be measured on the day slice 1 was built, or on any day after.
 
 ## Both
 - Environment variables listed in REPORT.md by name, never by value.
-- The deployment is not done until the finisher has loaded it and recorded
+- The deployment is not done until whoever deployed it has loaded it and recorded
   the check.
 - Commands verified against the Vercel CLI and EAS references, August 2026.
   Re-verify flags against current docs when a deploy fails on syntax.

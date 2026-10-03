@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Regression harness for the forge enforcement layer. Run it after any Claude
 # Code update; drift recurs and this is the one-command answer.
-# Checks: every script no-ops outside a forge project, behave against a
-# fixture .forge/, dod-gate blocks and releases correctly, rehydrate labels
-# both arming states, the three workflows parse, settings.json and every agent
-
-# frontmatter parse. Exits non-zero on any failure.
+# Checks: every script no-ops outside a forge project, behaves against a
+# fixture .forge/, dod-gate blocks and releases correctly, the rubric runs
+# from the armed commit in three states, rehydrate labels both arming states,
+# the workflows parse, settings.json and every seat agree with v2's pins.
+# Exits non-zero on any failure.
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 S="$ROOT/scripts"
 # Every script, not a frozen list of nine: commit.sh and preflight.sh shipped
 # with no assertion that they stay silent and side-effect-free outside a
 # forge project, which is the guarantee this loop exists to hold.
-ALL="guard.sh checks.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh attempt.sh capture.sh"
+ALL="guard.sh runlog.sh dod-gate.sh checkpoint.sh rehydrate.sh snapshot.sh notify.sh evidence.sh defect.sh commit.sh preflight.sh capture.sh arm.sh craft-suite.sh attempt.mjs dod-check.mjs gate.mjs slices.mjs forge-lib.mjs"
 FAILS=0
 ok()   { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; FAILS=$((FAILS+1)); }
@@ -203,47 +203,142 @@ printf '{"tool_input":{"command":"git push --force origin main"}}' \
 [ $? -eq 2 ] && ok "guard fails closed when the payload cannot be parsed" \
   || fail "guard fails OPEN without a usable python3"
 
-# "Cannot find module" is the literal wording of TS2307, the commonest real
-# TypeScript error there is. Deciding from the message swallowed it.
-AC="$AUD/checks"; mkdir -p "$AC/node_modules"
-printf '{"name":"x","scripts":{"typecheck":"node ./fail.js"}}\n' > "$AC/package.json"
-{ echo 'console.error("a.ts(1,1): error TS2307: Cannot find module \"@/lib/db\".");'
-  echo 'process.exit(1);'; } > "$AC/fail.js"
-printf '{"tool_input":{"file_path":"x"}}' | ( cd "$AC" && CLAUDE_PROJECT_DIR="$AC" bash "$S/checks.sh" >/dev/null 2>&1 )
-[ $? -eq 2 ] && ok "checks blocks a real TS2307 saying Cannot find module" \
-  || fail "checks swallowed a genuine typecheck failure"
-AC2="$AUD/checks2"; mkdir -p "$AC2/node_modules"
-printf '{"name":"x","scripts":{"typecheck":"definitely-not-a-real-binary-xyz"}}\n' > "$AC2/package.json"
-printf '{"tool_input":{"file_path":"x"}}' | ( cd "$AC2" && CLAUDE_PROJECT_DIR="$AC2" bash "$S/checks.sh" >/dev/null 2>&1 )
-[ $? -eq 0 ] && ok "checks stands down when the binary is genuinely absent" \
-  || fail "checks blocked on a missing binary"
+# 3f. v2: the rubric runs from the armed commit, in three states. A check
+# that could not run is UNKNOWN and never green; a command edited after the
+# greenlight is ignored; judgment cannot overrule a command.
+V2=$(mktemp -d)
+dc () { local d=$1; shift; ( cd "$d" && CLAUDE_PROJECT_DIR="$d" node "$S/dod-check.mjs" "$@" 2>&1 ); }
+P="$V2/unarmed"; mkdir -p "$P/.forge"
+cat > "$P/.forge/DOD.md" <<'EOF'
+# Definition of Done
+## Function
+- [ ] F1 | passes | check: true
+- [ ] F2 | fails | check: false
+- [ ] F3 | cannot run | check: definitely-not-a-binary-xyz
+- [ ] F4 | flaky once | check: [ -f .forge/seen ] || { touch .forge/seen; exit 1; }
+- [ ] C1 | hierarchy holds | judge: the dominant region is the declared LOUD element
+- [ ] V0 | final verifier PASS | rule
+EOF
+dc "$P" --ids F1 --tick >/dev/null; RC=$?
+{ [ $RC -eq 0 ] && grep -q '^- \[x\] F1' "$P/.forge/DOD.md"; } \
+  && ok "a passing check ticks its line" || fail "a passing check did not tick (rc=$RC)"
+perl -pi -e 's/^- \[ \] F2/- [x] F2/' "$P/.forge/DOD.md"
+dc "$P" --ids F2 --tick >/dev/null; RC=$?
+{ [ $RC -eq 1 ] && grep -q '^- \[ \] F2' "$P/.forge/DOD.md" && grep -q '| F2 | check |' "$P/.forge/DEFECTS.md"; } \
+  && ok "a failing check exits 1, un-ticks its line and files a defect" || fail "a failing check was not ruled FAIL (rc=$RC)"
+OUT=$(dc "$P" --ids F3); RC=$?
+{ [ $RC -eq 2 ] && printf '%s' "$OUT" | tail -1 | grep -q '"verdict":"UNKNOWN"'; } \
+  && ok "a check that cannot run is UNKNOWN, never green" || fail "could-not-run read as a ruling (rc=$RC)"
+dc "$P" --ids F1,F3 >/dev/null; RC=$?
+[ $RC -eq 2 ] && ok "a pass beside a could-not-run is UNKNOWN, not PASS" || fail "UNKNOWN was outvoted by a pass (rc=$RC)"
+OUT=$(dc "$P" --ids F4); RC=$?
+{ [ $RC -eq 0 ] && printf '%s' "$OUT" | grep -q 'flaky'; } \
+  && ok "a check that fails once is re-run before it counts, and says so" || fail "a flake counted as a FAIL (rc=$RC)"
+dc "$P" --judge F1 pass "looked at it" >/dev/null; RC=$?
+[ $RC -eq 3 ] && ok "judgment cannot overrule a check line" || fail "a check line accepted a judge ruling (rc=$RC)"
+dc "$P" --judge C1 pass "shot craft-home-1280" --tick >/dev/null; RC=$?
+{ [ $RC -eq 0 ] && grep -q '^- \[x\] C1' "$P/.forge/DOD.md"; } \
+  && ok "a judge ruling ticks its line with its evidence" || fail "a judge ruling did not tick (rc=$RC)"
+dc "$P" --rule >/dev/null; RC=$?
+{ [ $RC -ne 0 ] && grep -q '^- \[ \] V0' "$P/.forge/DOD.md"; } \
+  && ok "V0 stays open while any line fails" || fail "V0 ticked over a failing line"
+perl -pi -e 's/check: false/check: true/; s/check: definitely-not-a-binary-xyz/check: true/' "$P/.forge/DOD.md"
+dc "$P" --rule >/dev/null; RC=$?
+{ [ $RC -eq 0 ] && grep -q '^- \[x\] V0' "$P/.forge/DOD.md"; } \
+  && ok "V0 ticks only when every line holds" || fail "V0 did not tick on a clean rubric (rc=$RC)"
+dc "$P" --lint >/dev/null && ok "a well-formed rubric lints clean" || fail "lint rejected a valid rubric"
+printf -- '- [ ] F9 broken line without fields\n' >> "$P/.forge/DOD.md"
+dc "$P" --lint >/dev/null && fail "lint passed an unparsed checkbox" || ok "lint names a checkbox nobody will ever rule on"
+grep -v 'V0' "$P/.forge/DOD.md" | grep -v 'F9' > "$P/.forge/D2" && mv "$P/.forge/D2" "$P/.forge/DOD.md"
+dc "$P" --lint >/dev/null && fail "lint passed a rubric with no V0" || ok "lint requires the V0 line"
 
-# THE DEBOUNCE MUST NEVER SWALLOW A RED TREE. checks.sh runs on every Edit or
-# Write, a full typecheck and an uncached lint over the whole project, with the
-# failure fed back into the builder's context. That was most of why building
-# looked slow. It is now throttled per edit and absolute per dispatch, and the
-# throttle only ever starts from a GREEN pass: a broken tree is re-checked on
-# every edit until it is not broken.
-ACD="$AUD/checks3"; mkdir -p "$ACD/node_modules" "$ACD/.forge"
-printf '{"name":"x","scripts":{"typecheck":"node ./ok.js"}}\n' > "$ACD/package.json"
-printf 'process.exit(0);\n' > "$ACD/ok.js"
-printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" bash "$S/checks.sh" >/dev/null 2>&1 )
-[ -f "$ACD/.forge/.checks-stamp" ] && ok "a green pass stamps the debounce" \
-  || fail "no stamp written after a green pass"
-# Now break it. Inside the window the throttle skips, which is the point.
-printf 'process.exit(1);\n' > "$ACD/ok.js"
-printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" bash "$S/checks.sh" >/dev/null 2>&1 )
-[ $? -eq 0 ] && ok "the debounce skips a check inside its window" \
-  || fail "the debounce did not throttle"
-# And the per-dispatch gate ignores the window entirely, so a slice cannot end
-# dirty just because the last edit landed inside it.
-printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" FORGE_CHECKS_FULL=1 bash "$S/checks.sh" >/dev/null 2>&1 )
-[ $? -eq 2 ] && ok "the per-dispatch gate ignores the debounce" \
-  || fail "FORGE_CHECKS_FULL was throttled: a slice can end dirty"
-# A red pass must not stamp, or one green run would mute the next twenty edits.
-printf '{"tool_input":{"file_path":"x"}}' | ( cd "$ACD" && CLAUDE_PROJECT_DIR="$ACD" FORGE_CHECKS_DEBOUNCE=0 bash "$S/checks.sh" >/dev/null 2>&1 )
-[ $? -eq 2 ] && ok "a red tree is re-checked once the window passes" \
-  || fail "a red tree stayed silent past its window"
+# Pinning and the gate need git. Without it they are refused, never skipped.
+mkdir -p "$V2/nogit"
+{ echo '#!/bin/bash'; echo 'echo "You have not agreed to the Xcode license agreements. Please run sudo xcodebuild -license" >&2'; echo 'exit 69'; } > "$V2/nogit/git"
+chmod +x "$V2/nogit/git"
+CB="$V2/blocked"; mkdir -p "$CB/.forge"
+( cd "$CB" && echo x > x && env PATH="$V2/nogit:$PATH" CLAUDE_PROJECT_DIR="$CB" bash "$S/commit.sh" --now "x" ) >/dev/null 2>&1
+[ -f "$CB/.forge/COMMIT-BLOCKED" ] && ok "unusable git is a loud COMMIT-BLOCKED, not silence" || fail "commit.sh hid a broken git"
+( cd "$CB" && printf -- '- [ ] F1 | x | check: true\n' > .forge/DOD.md && env PATH="$V2/nogit:$PATH" CLAUDE_PROJECT_DIR="$CB" bash "$S/arm.sh" ) >/dev/null 2>&1
+[ -f "$CB/.forge/ARMED" ] && fail "arm.sh armed a rubric it could not pin" || ok "arm.sh refuses to arm without a usable git"
+
+if git --version >/dev/null 2>&1; then
+  G="$V2/armed"; mkdir -p "$G/.forge/checks"
+  ( cd "$G" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
+  cat > "$G/.forge/DOD.md" <<'EOF'
+- [ ] F1 | pinned | check: false
+- [ ] F2 | scripted | check: bash .forge/checks/F2.sh
+- [ ] V0 | final verifier PASS | rule
+EOF
+  printf 'exit 0\n' > "$G/.forge/checks/F2.sh"
+  printf '# Plan\n## Checks\n- test: true\n## Slice 1: one\nCloses: F1, F2\n' > "$G/.forge/PLAN.md"
+  ( cd "$G" && git add -A && git commit -q -m base && CLAUDE_PROJECT_DIR="$G" bash "$S/arm.sh" ) >/dev/null 2>&1
+  grep -q '^sha [0-9a-f]\{7,\}' "$G/.forge/ARMED" && ok "arm.sh pins the rubric to a commit" || fail "arm.sh wrote no sha"
+  perl -pi -e 's/check: false/check: true/' "$G/.forge/DOD.md"
+  dc "$G" --ids F1 >/dev/null; RC=$?
+  [ $RC -eq 1 ] && ok "a check rewritten after arming is ignored" || fail "the working copy overruled the armed rubric (rc=$RC)"
+  printf 'exit 0 # edited\n' >> "$G/.forge/checks/F2.sh"
+  dc "$G" --ids F2 >/dev/null; RC=$?
+  [ $RC -eq 3 ] && ok "an edited check script refuses the run" || fail "an edited check script ran (rc=$RC)"
+  ( cd "$G" && git checkout -q -- .forge/checks/F2.sh )
+  OUT=$( cd "$G" && env PATH="$V2/nogit:$PATH" CLAUDE_PROJECT_DIR="$G" node "$S/dod-check.mjs" --ids F2 2>&1 ); RC=$?
+  { [ $RC -eq 3 ] && printf '%s' "$OUT" | tail -1 | grep -q UNKNOWN; } \
+    && ok "an armed rubric with unusable git is UNKNOWN, never green" || fail "unusable git read as a ruling (rc=$RC)"
+
+  GT="$V2/gate"; mkdir -p "$GT/.forge"
+  ( cd "$GT" && git init -q . && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
+  { echo 'console.error("a.ts(1,1): error TS2307: Cannot find module \"@/lib/db\".");'; echo 'process.exit(1);'; } > "$GT/fail.js"
+  printf -- '- [ ] F1 | builds | check: true\n- [ ] V0 | final verifier PASS | rule\n' > "$GT/.forge/DOD.md"
+  printf '# Plan\n## Checks\n- test: node fail.js\n## Slice 1: one\nCloses: F1\n' > "$GT/.forge/PLAN.md"
+  ( cd "$GT" && git add -A && git commit -q -m base && CLAUDE_PROJECT_DIR="$GT" bash "$S/arm.sh" ) >/dev/null 2>&1
+  gate () { ( cd "$GT" && CLAUDE_PROJECT_DIR="$GT" node "$S/gate.mjs" "$@" 2>&1 ); }
+  gate 1 >/dev/null; RC=$?
+  [ $RC -eq 1 ] && ok "the gate fails a real TS2307 saying Cannot find module" || fail "the gate passed a genuine failure (rc=$RC)"
+  printf '# Plan\n## Checks\n- test: definitely-not-a-binary-xyz\n## Slice 1: one\nCloses: F1\n' > "$GT/.forge/PLAN.md"
+  ( cd "$GT" && CLAUDE_PROJECT_DIR="$GT" bash "$S/arm.sh" --amend "binary test" ) >/dev/null 2>&1
+  gate 1 >/dev/null; RC=$?
+  [ $RC -eq 2 ] && ok "a missing binary is UNKNOWN at the gate, never green" || fail "a missing binary passed the gate (rc=$RC)"
+  printf '# Plan\n## Checks\n- test: true\n## Slice 1: one\nCloses: F1\n' > "$GT/.forge/PLAN.md"
+  ( cd "$GT" && CLAUDE_PROJECT_DIR="$GT" bash "$S/arm.sh" --amend "green" ) >/dev/null 2>&1
+  ( cd "$GT" && CLAUDE_PROJECT_DIR="$GT" node "$S/attempt.mjs" base 1 "$(git rev-parse HEAD)" ) >/dev/null 2>&1
+  gate 1 >/dev/null; RC=$?
+  { [ $RC -eq 0 ] && grep -q '^- \[x\] F1' "$GT/.forge/DOD.md"; } \
+    && ok "a green gate ticks the slice's lines" || fail "a green slice was not ruled PASS (rc=$RC)"
+  OPEN=$( cd "$GT" && CLAUDE_PROJECT_DIR="$GT" node "$S/slices.mjs" --open | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0)).slices.length))' )
+  [ "$OPEN" = 0 ] && ok "a green slice leaves the open list" || fail "slices.mjs still lists a green slice ($OPEN open)"
+  ( cd "$GT" && printf '// eslint-disable-next-line\nexport const x = 1\n' > x.js && git add x.js && git commit -q -m sneak ) >/dev/null 2>&1
+  OUT=$(gate 1); RC=$?
+  { [ $RC -eq 1 ] && printf '%s' "$OUT" | grep -q 'suppression'; } \
+    && ok "a suppression added by the slice fails the gate" || fail "a suppression slipped through (rc=$RC)"
+else
+  fail "git is not usable on this machine; pinning and the gate are unchecked"
+fi
+
+AT="$V2/attempt"; mkdir -p "$AT/.forge"
+at () { ( cd "$AT" && CLAUDE_PROJECT_DIR="$AT" node "$S/attempt.mjs" "$@" 2>&1 ); }
+at state s1 | grep -q 'rung: clear' && ok "a slice with no verdicts sits on no rung" || fail "attempt.mjs does not start clear"
+at record s1 FAIL >/dev/null; at state s1 | grep -q 'rung: retry' && ok "one FAIL retries with the gate output" || fail "one FAIL escalates"
+at record s1 FAIL >/dev/null; at state s1 | grep -q 'rung: raise to opus' && ok "two FAILs raise the builder to Opus, high" || fail "two FAILs do not raise"
+at record s1 FAIL >/dev/null; at state s1 | grep -q 'rung: stuck' && ok "three FAILs are stuck" || fail "three FAILs are not stuck"
+at state s1 | grep -q 'rung: stuck' && ok "the rung survives a fresh invocation, the compaction case" || fail "the ladder forgets"
+at record s2 FAIL >/dev/null; at state s1 | grep -q '3 fail' && ok "slices count independently" || fail "fails leak between slices"
+at record s1 PASS >/dev/null; at state s1 | grep -q 'rung: green' && ok "a PASS after FAILs is green" || fail "a passed slice still reads stuck"
+at reset s1 | grep -q 'rung: clear' && ok "a rewind clears the counter" || fail "reset does not clear"
+
+# A build workflow runs in the background while the lead idles: the Stop gate
+# and the notifier both stand down, and only a fresh session clears the marker.
+BW="$V2/building"; mkdir -p "$BW/.forge"
+printf -- '- [ ] F1 | x | check: true\n' > "$BW/.forge/DOD.md"; touch "$BW/.forge/ARMED" "$BW/.forge/BUILDING"
+echo '{}' | CLAUDE_PROJECT_DIR="$BW" bash "$S/dod-gate.sh" >/dev/null 2>&1
+[ $? -eq 0 ] && ok "the Stop gate yields while a build workflow runs" || fail "the Stop gate pushes an idle lead mid-build"
+[ -z "$(CLAUDE_PROJECT_DIR="$BW" bash "$S/notify.sh" 2>/dev/null)" ] && ok "no ping while the build runs" || fail "notify pings mid-build"
+OUT=$(printf '{"source":"compact"}' | CLAUDE_PROJECT_DIR="$BW" bash "$S/rehydrate.sh" 2>/dev/null)
+{ [ -f "$BW/.forge/BUILDING" ] && printf '%s' "$OUT" | grep -q 'BUILD IN FLIGHT'; } \
+  && ok "a compaction keeps the build marker" || fail "a compaction cleared a live build"
+OUT=$(printf '{"source":"startup"}' | CLAUDE_PROJECT_DIR="$BW" bash "$S/rehydrate.sh" 2>/dev/null)
+{ [ ! -f "$BW/.forge/BUILDING" ] && printf '%s' "$OUT" | grep -q '/forge resume'; } \
+  && ok "a fresh session clears a stale build marker and names /forge resume" || fail "a dead build marker survived a restart"
+rm -rf "$V2"
 
 # The defect ledger. A rubric line refused by the verifier used to be
 # byte-identical here to one nobody had attempted.
@@ -253,45 +348,35 @@ grep -q '^[0-9-]*T[0-9:]*Z | F19 | blocks | rows visible to the wrong identity$'
   && ok "defect.sh appends a parseable ledger line" \
   || fail "defect.sh wrote nothing usable"
 
-# RUNLOG carries the elapsed seconds, so the time split stops being an estimate.
+# RUNLOG carries one line per named seat with the elapsed seconds, so the time
+# split stops being an estimate. Unnamed stops, about fifty per dispatch, get
+# the throttled commit and no line.
 ARL="$AUD/runlog"; mkdir -p "$ARL/.forge"
 printf '{"agent_type":"builder"}' | ( cd "$ARL" && CLAUDE_PROJECT_DIR="$ARL" bash "$S/runlog.sh" >/dev/null 2>&1 )
 printf '{"agent_type":"verifier"}' | ( cd "$ARL" && CLAUDE_PROJECT_DIR="$ARL" bash "$S/runlog.sh" >/dev/null 2>&1 )
-grep -qE '^[0-9-]+T[0-9:]+Z \| verifier \| stopped \| [0-9]+s \| dispatch$' "$ARL/.forge/RUNLOG.md" \
-  && ok "runlog records the seat, the elapsed time, and the dispatch mark" \
+grep -qE '^[0-9-]+T[0-9:]+Z \| verifier \| stopped \| [0-9]+s$' "$ARL/.forge/RUNLOG.md" \
+  && ok "runlog records the seat and the elapsed time" \
   || fail "runlog still records a bare stop"
-
-# SubagentStop is NOT the dispatch boundary: the vitrine build fired it 9,324
-# times against 185 real dispatches. A stop that names no seat still gets its
-# line and still gets the throttled checkpoint, because a builder runs for hours
-# and those unnamed fires are the only heartbeat inside it. What it must NOT get
-# is the unthrottled check, which is 2.7 seconds a fire and about seven hours
-# per M or L run.
-AUN="$AUD/runlog-unnamed"; mkdir -p "$AUN/.forge"
-printf '{"agent_id":"a1b2c3d4e5f6a7b8"}' | ( cd "$AUN" && CLAUDE_PROJECT_DIR="$AUN" bash "$S/runlog.sh" >/dev/null 2>&1 )
-grep -qE '^[0-9-]+T[0-9:]+Z \| a1b2c3d4e5f6a7b8 \| stopped \| [0-9]+s$' "$AUN/.forge/RUNLOG.md" \
-  && ok "an unnamed stop is logged without the dispatch mark" \
-  || fail "an unnamed stop is logged wrongly"
-grep -q 'dispatch' "$AUN/.forge/RUNLOG.md" \
-  && fail "an unnamed stop was treated as a dispatch boundary" \
-  || ok "an unnamed stop does not trigger the per-dispatch gate"
-
-# Every record is one atomic append. Run two's RUNLOG carried 45 lines with
-# verdict prose spliced mid-record because concurrent stops each wrote twice.
 LINES=$(wc -l < "$ARL/.forge/RUNLOG.md" | tr -d ' ')
-[ "$LINES" = 2 ] \
-  && ok "each stop appends exactly one whole line" \
-  || fail "runlog wrote $LINES lines for two stops"
+[ "$LINES" = 2 ] && ok "each seat stop appends exactly one whole line" || fail "runlog wrote $LINES lines for two stops"
+printf '{"agent_id":"a1b2c3d4e5f6a7b8"}' | ( cd "$ARL" && CLAUDE_PROJECT_DIR="$ARL" bash "$S/runlog.sh" >/dev/null 2>&1 )
+LINES=$(wc -l < "$ARL/.forge/RUNLOG.md" | tr -d ' ')
+[ "$LINES" = 2 ] && ok "an unnamed stop writes no RUNLOG line" || fail "an unnamed stop was logged"
 
-# The env block is where the debounce lives, and its absence was the finding:
-# settings.json carried only permissions and hooks, so FORGE_CHECKS_DEBOUNCE had
-# nowhere to be set and ran at 20 seconds for every one of 1,524 edits.
-python3 - "$ROOT/.claude/settings.json" <<'PY' && ok "settings.json carries the env block and the subagent cache ttl" || fail "settings.json is missing the env block or the cache ttl"
-import json,sys
-d=json.load(open(sys.argv[1]))
-assert d.get("env",{}).get("FORGE_CHECKS_DEBOUNCE"), "no FORGE_CHECKS_DEBOUNCE"
-assert d.get("subagentPromptCacheTtl"), "no subagentPromptCacheTtl"
-PY
+# v2 settings: the lead runs at high effort, two plugins whose hooks fire on
+# every edit and stop stay off in forge projects, and no hook runs a typecheck
+# on the edit path.
+node -e '
+const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+const post = JSON.stringify(d.hooks.PostToolUse || [])
+const ok = d.effortLevel === "high"
+  && (d.enabledPlugins || {})["impeccable@impeccable"] === false
+  && (d.enabledPlugins || {})["superpowers@claude-plugins-official"] === false
+  && d.subagentPromptCacheTtl
+  && post.includes("commit.sh") && !JSON.stringify(d).includes("checks.sh")
+process.exit(ok ? 0 : 1)' "$ROOT/.claude/settings.json" \
+  && ok "settings.json carries v2's effort, plugin and hook shape" \
+  || fail "settings.json drifted from v2"
 
 # Vendored copies were never synced to begin with: four of five scripts differed
 # between two real targets, commit.sh and defect.sh never arrived, and one ran a
@@ -317,11 +402,11 @@ SKILLS=$(ls -1d "$ROOT/.claude/skills"/*/ 2>/dev/null | wc -l | tr -d ' ')
 HOOKS=$(python3 -c "
 import json;d=json.load(open('$ROOT/.claude/settings.json'))
 print(sum(len(e.get('hooks',[])) for arr in d['hooks'].values() for e in arr))")
-word () { case "$1" in 3) echo three ;; 7) echo seven ;; 8) echo eight ;; 9) echo nine ;; *) echo "$1" ;; esac; }
+word () { case "$1" in 2) echo two ;; 3) echo three ;; 7) echo seven ;; 8) echo eight ;; 9) echo nine ;; *) echo "$1" ;; esac; }
 grep -qi "$(word $SEATS) seats" "$ROOT/README.md" \
   && ok "README's seat count matches the filesystem ($SEATS)" \
   || fail "README does not say $(word $SEATS) seats, but $SEATS exist"
-grep -qi "$(word $WFLOWS) fan-out\|$(word $WFLOWS) workflows" "$ROOT/README.md" \
+grep -qi "$(word $WFLOWS) workflows" "$ROOT/README.md" \
   && ok "README's workflow count matches the filesystem ($WFLOWS)" \
   || fail "README does not match the $WFLOWS workflows on disk"
 grep -qi "$(word $HOOKS) hooks" "$ROOT/README.md" \
@@ -347,14 +432,21 @@ grep -qi "harness's README into the product\|scaffold README" "$ROOT/.claude/age
 grep -q 'What changed in this version' "$ROOT/START_HERE.html" \
   && ok "START_HERE opens on what changed since the last version" \
   || fail "START_HERE has no changelog section"
-for term in attempt.sh capture.sh manifest.mjs cost.mjs design-critic; do
+for term in attempt.mjs capture.sh manifest.mjs cost.mjs design-critic gate.mjs dod-check.mjs oracle; do
   grep -qF "$term" "$ROOT/START_HERE.html" \
     && ok "START_HERE mentions $term" \
     || fail "START_HERE never mentions $term, so the onboarding page is behind the harness"
 done
-grep -qi "seven seats\|seven forge subagents" "$ROOT/START_HERE.html" \
-  && fail "START_HERE still claims seven seats" \
-  || ok "START_HERE's seat count is current"
+grep -qi "$(word $SEATS) seats" "$ROOT/START_HERE.html" \
+  && ok "START_HERE's seat count is current ($SEATS)" \
+  || fail "START_HERE does not say $(word $SEATS) seats"
+{ grep -qi "$(word $SEATS) seats" "$ROOT/CLAUDE.md" && grep -qi "$(word $HOOKS) hooks" "$ROOT/CLAUDE.md"; } \
+  && ok "CLAUDE.md's counts match the filesystem" \
+  || fail "CLAUDE.md's seat or hook count is stale"
+# Exact pins only: no Opus 5, no Haiku, nothing inherited, in seats or workflows.
+grep -rnE "haiku|claude-opus-5([^-]|$)|model: *inherit|model: *'(opus|sonnet|fable)'" "$ROOT/.claude/agents" "$ROOT/.claude/workflows" >/dev/null \
+  && fail "a seat or workflow names Opus 5, Haiku, an alias or inherit" \
+  || ok "every seat and workflow pins Opus 5.5, Sonnet 5.5 or the Fable oracle"
 
 grep -qi "TUTORIAL\|tutorial takes a stranger" "$ROOT/.claude/skills/standards/SKILL.md" \
   && ok "the four documentation kinds are named and kept apart" \
@@ -398,40 +490,9 @@ grep -q 'capture.sh' "$ROOT/.claude/agents/verifier.md" \
 grep -q 'probes' "$ROOT/.claude/agents/architect.md" \
   && ok "verification debris is a disqualifier" \
   || fail "nothing stops probe scripts shipping inside the product"
-grep -q 'ANCHOR THE RENDER' "$ROOT/.claude/agents/verifier.md" \
+grep -qi 'anchor the render' "$ROOT/.claude/agents/verifier.md" \
   && ok "the render is anchored before anything is judged" \
   || fail "a blank frame can still be ruled on as a design difference"
-
-# The escalation ladder had no counter anywhere on disk, so it reset itself at
-# every compaction and effectively never fired. The rung is computed from the
-# ledger rather than remembered, which is what makes it survive.
-AAT="$AUD/attempt"; mkdir -p "$AAT/.forge"
-run_at () { ( cd "$AAT" && CLAUDE_PROJECT_DIR="$AAT" bash "$S/attempt.sh" "$@" 2>&1 ); }
-run_at state s1 | grep -q 'rung: clear' \
-  && ok "a slice with no verdicts sits on no rung" \
-  || fail "attempt.sh does not start clear"
-run_at record s1 FAIL >/dev/null
-run_at state s1 | grep -q 'rung: re-check' \
-  && ok "the first FAIL re-checks rather than escalating" \
-  || fail "the first FAIL escalates, on a verdict wrong a quarter of the time"
-run_at record s1 FAIL >/dev/null
-run_at state s1 | grep -q 'rung: raise the model' \
-  && ok "two FAILs raise the model" \
-  || fail "two FAILs do not raise the model"
-run_at record s1 FAIL >/dev/null
-run_at state s1 | grep -q 'rung: re-plan' \
-  && ok "three FAILs re-plan the slice" \
-  || fail "three FAILs do not re-plan"
-run_at state s1 | grep -q 'rung: re-plan' \
-  && ok "the rung survives a fresh invocation, which is the compaction case" \
-  || fail "the ladder loses its state between calls"
-run_at record s2 FAIL >/dev/null
-run_at state s1 | grep -q '3 fail' \
-  && ok "slices count independently" \
-  || fail "one slice's fails leak into another"
-run_at reset s1 | grep -q 'rung: clear' \
-  && ok "a re-plan clears the counter" \
-  || fail "reset does not clear the counter"
 
 # The design phase's falsification test earned exactly one gate, and it only
 # works if LOUD is declared: a critic named a real build's dominant region
@@ -586,15 +647,16 @@ OUT=$(CLAUDE_PROJECT_DIR="$T10" "$S/preflight.sh" 2>/dev/null)
   || fail "stage headings broke the report"
 rm -rf "$T10"
 
-# 4. rehydrate labels both arming states.
-printf '# Plan\n\n/goal Every line of .forge/DOD.md checked, with evidence recorded in .forge/EVIDENCE.md, and a PASS verdict from the verifier agent.\n' > "$T2/.forge/PLAN.md"
-OUT=$(CLAUDE_PROJECT_DIR="$T2" "$S/rehydrate.sh" 2>/dev/null)
-{ printf '%s' "$OUT" | grep -q 'Awaiting greenlight. Nothing armed yet.' && printf '%s' "$OUT" | grep -q 'arm with: /goal '; } \
+# 4. rehydrate labels both arming states, and never asks for a /goal paste.
+printf '# Plan\n## Slice 1: one\nCloses: F1\n' > "$T2/.forge/PLAN.md"
+OUT=$(CLAUDE_PROJECT_DIR="$T2" "$S/rehydrate.sh" </dev/null 2>/dev/null)
+printf '%s' "$OUT" | grep -q 'Awaiting greenlight. Nothing armed yet.' \
   && ok "rehydrate labels the pre-gate state" || fail "rehydrate pre-gate label wrong"
 touch "$T2/.forge/ARMED"
-OUT=$(CLAUDE_PROJECT_DIR="$T2" "$S/rehydrate.sh" 2>/dev/null)
-{ printf '%s' "$OUT" | grep -q 'Gate active.' && printf '%s' "$OUT" | grep -q 'paste: /goal '; } \
-  && ok "rehydrate labels the armed state" || fail "rehydrate armed label wrong"
+OUT=$(CLAUDE_PROJECT_DIR="$T2" "$S/rehydrate.sh" </dev/null 2>/dev/null)
+{ printf '%s' "$OUT" | grep -q 'Gate armed.' && ! printf '%s' "$OUT" | grep -q '/goal'; } \
+  && ok "rehydrate labels the armed state without a /goal paste" || fail "rehydrate armed label wrong"
+rm -f "$T2/.forge/ARMED"
 
 # 4b. progress renderer: draws the fixture, no-ops without .forge/.
 if command -v node >/dev/null 2>&1; then
@@ -970,7 +1032,7 @@ console.log(m ? (+m[1])+(+m[2])+(+(m[3]||0))+(+m[4])+(+u)+(+f) : -1);
   || fail "states do not partition the rubric (sum=$SUM of 4)"
 rm -rf "$T8"
 
-# 5. The three workflows parse under the runtime grammar (async body, export stripped).
+# 5. The workflows parse under the runtime grammar (async body, export stripped).
 if command -v node >/dev/null 2>&1; then
   node -e '
     const fs = require("fs");
@@ -982,9 +1044,18 @@ if command -v node >/dev/null 2>&1; then
       catch (e) { fail = 1; console.error(f + ": " + e.message); }
     }
     process.exit(fail);' "$ROOT/.claude/workflows" \
-    && ok "three workflows parse" || fail "a workflow does not parse"
+    && ok "every workflow parses" || fail "a workflow does not parse"
 else
   fail "node not found; workflows unchecked"
+fi
+
+# 5b. The build workflow's control flow, simulated with agent() stubbed: the
+# ladder, partials, UNKNOWN, resume at a rung, milestone, re-judge, fix mode,
+# the parallel L merge, and a pin on every call. Zero model calls.
+if command -v node >/dev/null 2>&1; then
+  node "$S/build-sim.mjs" >/dev/null 2>&1 \
+    && ok "build.js walks the ladder, verifies and pins every agent (build-sim)" \
+    || { fail "build.js control flow broke:"; node "$S/build-sim.mjs" 2>&1 | grep FAIL | sed 's/^/     /'; }
 fi
 
 # 6b. A seat is a contract between prose and configuration. Run two shipped four
@@ -1001,13 +1072,24 @@ if command -v node >/dev/null 2>&1; then
   # And the check must fail on a broken seat, or it is decorative. Run two's own
   # mutation pass found four tests that passed whether or not their code worked,
   # including one written to close a check-lies-about-its-subject bug.
+  # And the check must fail on a broken seat, or it is decorative. Three
+  # mutations, one per v2 contract: an inherited model, Fable outside the
+  # oracle, and a seat ordered to run a script it has no Bash for.
   T9=$(mktemp -d)
   cp "$ROOT/.claude/agents/verifier.md" "$T9/verifier.md"
-  # Strip Edit and Write back out, which is exactly how run two shipped it.
-  sed -i.bak -E 's/^tools:.*$/tools: Read, Grep, Glob, Bash, WebFetch/' "$T9/verifier.md"
-  rm -f "$T9"/*.bak
+  sed -i.bak -E 's/^model:.*$/model: inherit/' "$T9/verifier.md"; rm -f "$T9"/*.bak
   node "$S/seat-check.mjs" "$T9" >/dev/null 2>&1 \
-    && fail "seat-check passed a verifier with no way to write a checkbox" \
+    && fail "seat-check passed a seat that inherits its model" \
+    || ok "seat-check fails on an inherited model"
+  cp "$ROOT/.claude/agents/verifier.md" "$T9/verifier.md"
+  sed -i.bak -E 's/^model:.*$/model: claude-fable-5-1/' "$T9/verifier.md"; rm -f "$T9"/*.bak
+  node "$S/seat-check.mjs" "$T9" >/dev/null 2>&1 \
+    && fail "seat-check let Fable run outside the oracle" \
+    || ok "seat-check keeps Fable to the oracle"
+  rm -f "$T9/verifier.md"; cp "$ROOT/.claude/agents/architect.md" "$T9/architect.md"
+  sed -i.bak -E 's/^tools:.*$/tools: Read, Grep, Glob, Write, Edit/' "$T9/architect.md"; rm -f "$T9"/*.bak
+  node "$S/seat-check.mjs" "$T9" >/dev/null 2>&1 \
+    && fail "seat-check passed an architect that cannot run dod-check" \
     || ok "seat-check fails on a seat that cannot do its job"
   rm -rf "$T9"
 else

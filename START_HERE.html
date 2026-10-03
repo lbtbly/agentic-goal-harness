@@ -84,41 +84,55 @@ goal to a shipped product, with one decision left to you.</p>
 
 <div class="changed">
 <h2>What changed in this version</h2>
-<p class="when">10 September 2026 &middot; branch optimization-2026-09</p>
+<p class="when">3 October 2026 &middot; Forge v2</p>
 
-<p>Three runs were measured out of their own transcripts, and most of the obvious
-advice turned out to be wrong for this harness. Cost is context length inside a
-dispatch: cache reads are 62 to 66 per cent of a run and output is 10 to 13, so
-trimming prose is a rounding error. Each stage's premise was tested before it was
-built, and two of the three tested failed.</p>
+<p>Forge was tuned for Opus 5 and Fable 5, and its one full M run, vitrine,
+showed what that tuning cost. Measured out of its own transcripts by the
+corrected <code>cost.mjs</code>: $1,911 at list price, about 120 hours of wall
+clock, 153 dispatches, a lead whose context peaked near 1M tokens, and more
+agent time spent verifying (29.4 hours) than building (25.2). Older figures for
+the same run are higher because the old <code>cost.mjs</code> counted every API
+call twice; do not quote them. v2 is the lightest harness that keeps every
+quality constraint. Orchestration moved into code, deterministic checks come
+before judgment, and every seat pins its model. The bar did not move.</p>
 
 <table>
 <thead><tr><th>Change</th><th>Why</th></tr></thead>
 <tbody>
-<tr><td>The lead has a context contract</td><td class="why">It was 33 to 58 per cent of every measured run and the only seat with no model, no effort and no turn cap. One session cost $1,110 across 3,540 round-trips at 998,263 peak context.</td></tr>
-<tr><td><code>runlog.sh</code> gates on the seat name</td><td class="why">SubagentStop is not the dispatch boundary: it fired 9,324 times against 185 real dispatches, each running an unthrottled typecheck. About seven hours of blocking hook time per M or L run.</td></tr>
-<tr><td>settings.json gains an <code>env</code> block</td><td class="why">It held only permissions and hooks, so the checks debounce had nowhere to live and ran at 20 seconds for all 1,524 edits of a build. Now 120, and the subagent cache TTL is an hour.</td></tr>
-<tr><td>A context ceiling at 250k</td><td class="why"><code>maxTurns</code> does not bound round-trips. A builder pinned at 220 turns recorded 815 round-trips and 613,865 tokens in one dispatch.</td></tr>
-<tr><td><code>scripts/attempt.sh</code></td><td class="why">The escalation ladder had no counter anywhere on disk, so it reset at every compaction and effectively never fired. The first FAIL now re-checks rather than escalating, because a red verdict is wrong about a quarter of the time.</td></tr>
-<tr><td>The verifier gets UNKNOWN</td><td class="why">A judge with no way out invents a verdict, and an invented PASS reads exactly like a real one. Its dispatch is shorter too: the diff, the lines in scope, and paths. Never the builder's reasoning.</td></tr>
-<tr><td>The Actors grid replaces the persona panel</td><td class="why">Personas cast from a role census score about 54 per cent on interface questions where grounded profiles score 62 and shuffled ones score 52. The grid asks for parameters instead: a job, a situation, a PIAAC band, a Dreyfus stage, an incumbent, two switching forces.</td></tr>
-<tr><td><code>design-directions</code> merges instead of crowning</td><td class="why">Picking the best of four scores 56 per cent above the average, merging scores 70, merging plus one iteration scores 152. Deleting the pick deleted the bracket, the lenses and the byes with it.</td></tr>
-<tr><td>A blind <code>design-critic</code> seat</td><td class="why">It holds Read and nothing else, so it cannot go and find the sharp original. It judges a blurred capture against the LOUD element the screen grid declares.</td></tr>
-<tr><td><code>scripts/capture.sh</code></td><td class="why">One build hand-wrote 196 probe scripts, 69 opening their own browser, 23 covering two rubric lines, none sharing a helper, all committed into the product. One command now, three files, and iOS, Android and engine paths.</td></tr>
-<tr><td>Product documentation</td><td class="why">The harness documented the run exhaustively and the product not at all. One build shipped this harness's own README verbatim inside a collection app.</td></tr>
-<tr><td><code>scripts/manifest.mjs</code></td><td class="why">Vendored copies were never synced. One target ran a 601-byte <code>dod-gate.sh</code> against the harness's 3,947: the Stop gate enforcing every rubric line was a stub, and nothing said so.</td></tr>
-<tr><td><code>scripts/cost.mjs</code></td><td class="why">Per-seat cost read from transcripts Claude Code already writes, retroactive to runs that finished months ago. Not OpenTelemetry, which collapses every custom seat into one bucket.</td></tr>
+<tr><td>Seven seats</td><td class="why">The router and the finisher are gone: the lead sizes the goal in one line and ships through the ship skill. The new oracle seat runs Fable 5.1, read-only, only on a trigger listed at the greenlight, at most 3 calls per run, and never through <code>/advisor</code>.</td></tr>
+<tr><td>Exact pins on every seat</td><td class="why">In vitrine the lead passed <code>model: opus</code> on 99 of 102 dispatches, so the builder's Sonnet pin never applied. Every seat now names Opus 5.5 or Sonnet 5.5 at a fixed effort, and Fable 5.1 only for the oracle. No Opus 5, no Haiku, no inherit, and the lead never passes a model. <code>cost.mjs --models</code> flags any seat that ran off its pin.</td></tr>
+<tr><td>Project settings</td><td class="why"><code>effortLevel</code> is high, so the lead no longer inherits a global xhigh. The impeccable and superpowers plugins are off inside forge projects: one ran a check on every edit and a 30-second pass on every Stop, the other injects "brainstorm first, ask questions", which breaks rule 1. Your other projects keep both.</td></tr>
+<tr><td><code>build.js</code> runs BUILD and VERIFY</td><td class="why">A loop the lead runs turn by turn grows its context on every pass, which is how vitrine's lead reached about 1M tokens. Now the lead writes <code>.forge/BUILDING</code>, launches one background workflow, idles, and reads one summary. The escalation ladder is code, and its count lives on disk in <code>.forge/ATTEMPTS.json</code>, written through <code>attempt.mjs</code>.</td></tr>
+<tr><td><code>gate.mjs</code> replaces the per-slice verifier</td><td class="why">A verifier dispatch averaged 57 minutes. The gate runs the pinned typecheck, lint and tests, the slice's checks, and a scan for added suppressions, in minutes and without an opinion. The verifier now runs twice: after the core-loop slice, and at the end.</td></tr>
+<tr><td>The rubric is code</td><td class="why">Each DOD line carries <code>check:</code>, <code>judge:</code> or <code>operator:</code>. <code>arm.sh</code> pins the approved rubric to a commit, and <code>dod-check.mjs</code> runs every check from that commit, so a command edited after approval is ignored. Three states: pass, fail, could-not-run. Could-not-run is UNKNOWN and never green. The last line is <code>V0 | final verifier PASS</code>. Judge lines are budgeted at S 8, M 25, L 50, and <code>craft-suite.sh</code> turns the disqualifier list into a few check lines.</td></tr>
+<tr><td>No <code>/goal</code> paste</td><td class="why"><code>/goal</code> sees only the transcript, it would nag an idle lead mid-build, and the Stop gate already reads DOD.md. The greenlight is still plan mode and still the only stop.</td></tr>
+<tr><td>Hooks retargeted, still nine</td><td class="why">PostToolUse runs only the throttled commit; typecheck and lint moved into the gate. SubagentStop dropped its checks and the board render. The Stop gate and the ping stand down while <code>BUILDING</code> exists. <code>commit.sh</code> writes <code>.forge/COMMIT-BLOCKED</code> when git cannot run, where it used to exit silently.</td></tr>
+<tr><td>Prompts cut to rules</td><td class="why">Prompt text had grown from 359 to 939 lines, mostly post-mortem rationale every seat re-read every turn. The evidence now lives in <code>docs/RATIONALE.md</code>, out of context.</td></tr>
+<tr><td>Retired</td><td class="why"><code>verify-fanout.js</code> (dod-check.mjs does its job), <code>defect-sweep.js</code> (its fixer bypassed the gate and the commit), <code>checks.sh</code>, <code>attempt.sh</code> (now <code>attempt.mjs</code>), and the per-slice verifier.</td></tr>
 </tbody>
 </table>
 
-<p><strong>Two claims were tested and lost.</strong></p>
+<p><strong>What you do differently</strong></p>
 <ul>
-<li><strong>The design phase produces flat hierarchy.</strong> A squint test over five shipped screens returned a clear dominant region on four. The object model, the token contract and the deny-list all rested on that claim and were struck. What survived is the declared LOUD, because on the dense screen the critic named a filter chip correctly and had no way to know it was the wrong answer.</li>
-<li><strong>No seat can see rendered UI.</strong> Every seat could. The build installed Playwright itself and drove it constantly. What was missing was not sight but a shared contract.</li>
+<li><strong>Make git work first.</strong> On macOS: <code>sudo xcodebuild -license accept</code>. Without it <code>arm.sh</code> refuses to arm, and <code>commit.sh</code> writes <code>.forge/COMMIT-BLOCKED</code> instead of committing.</li>
+<li><strong>Open the session on Opus 5.5 and leave effort alone.</strong> The project sets it to high. Never pass a model to a seat, and never enable <code>/advisor</code>.</li>
+<li><strong>Read the Fable block at the greenlight.</strong> It names the triggers and the cap. Approving is your consent to those calls, so change the cap there or not at all.</li>
+<li><strong>Approve, then walk away.</strong> There is nothing to paste. While the build runs the lead is idle and the ping is quiet. That is the design, not a stall.</li>
+<li><strong>After a crash, type <code>/forge resume</code>.</strong> The ledger on disk puts the build back at the right slice and the right rung.</li>
 </ul>
 
-<p><strong>Before trialling this in a project</strong>, sync it, or the run exercises the old
-harness and reads as this one failing:</p>
+<p>Speed and cost gains are estimates until the v2 benchmark measures them:
+M two to four times faster, S about twice. The bar for merging v2 to main is
+concrete. On the same S goal, v2 takes at most half of v1's time and cost. On
+an M goal: 100 per cent PASS, lead peak context at most 300K, verifier hours at
+most builder hours, zero pin overrides in <code>cost.mjs --models</code>, and
+you judge the product market ready.</p>
+
+<p><strong>Before trialling v2 in a project</strong>, sync it, or the run
+exercises the old harness and reads as this one failing. <code>check</code>
+also names orphans, files v2 no longer ships such as a stale
+<code>router.md</code>: remove those by hand. <code>manifest.mjs</code> does not
+track CLAUDE.md, so copy that across yourself.</p>
 <pre><code>node scripts/manifest.mjs check ~/Claude/&lt;target&gt;
 node scripts/manifest.mjs sync  ~/Claude/&lt;target&gt; --adopt</code></pre>
 </div>
@@ -131,7 +145,7 @@ node scripts/manifest.mjs sync  ~/Claude/&lt;target&gt; --adopt</code></pre>
   <li><a href="#real-run">How a real run works</a></li>
   <li><a href="#build-loop">The build loop</a></li>
   <li><a href="#memory">Memory and interruption</a></li>
-  <li><a href="#patterns">The six workflow patterns</a></li>
+  <li><a href="#patterns">The two workflows</a></li>
   <li><a href="#unattended">A machine that stays up</a></li>
   <li><a href="#trouble">When things go wrong</a></li>
   <li><a href="#glossary">Glossary and customization</a></li>
@@ -140,16 +154,17 @@ node scripts/manifest.mjs sync  ~/Claude/&lt;target&gt; --adopt</code></pre>
 <h2 id="what">1. What Forge is</h2>
 <p>Forge is a set of configuration files that turns Claude Code into a product
 pipeline. You type <code>/forge "a one-line goal"</code> and answer three
-questions. The pipeline sizes the goal, researches the market, interviews
-synthetic users, designs the screens, and writes a plan with a per-goal
-Definition of Done: a checklist where every line is provable by a command or a
-screenshot. You approve that plan once, at the greenlight, and that is the
-only decision you make. After approval the build runs on its own, and it ends
-only when an adversarial verifier confirms every checklist line with recorded
-evidence, then ships the result.</p>
+questions. The pipeline sizes the goal, researches the market, maps who will
+use the product, designs the screens, and writes a plan with an executable
+Definition of Done: a checklist where each line names the command, the
+judgment, or the operator proof that decides it. You approve that plan once,
+at the greenlight, and that is the only decision you make. After approval a
+background workflow builds the plan slice by slice behind a deterministic gate,
+and the run ends only when a fresh verifier confirms every line with recorded
+evidence. Then the lead ships it.</p>
 
 <h2 id="model">2. The mental model</h2>
-<p>Four primitives do all the work. None of them require programming to
+<p>Five primitives do all the work. None of them require programming to
 understand, but each answers a real weakness of a single AI session.</p>
 
 <h3>The lead session and its context window</h3>
@@ -159,7 +174,8 @@ Everything it reads, every file, every command output, accumulates in its
 session summarizes itself and details get lost. The session driving a forge
 run is called the <strong>lead</strong>. Forge treats the lead's memory as
 unreliable by design, which is why state lives in files, not in the
-conversation.</p>
+conversation, and why the build runs in a workflow rather than in the lead's
+own turns.</p>
 
 <h3>Subagents</h3>
 <p>The lead can delegate a task to a <em>subagent</em>: a second, separate
@@ -167,8 +183,9 @@ conversation with its own empty context window, its own instructions, and a
 restricted set of tools. The subagent works, reports back one answer, and its
 context is discarded. A separate context beats a longer one for two reasons:
 the noise of a long investigation never pollutes the lead, and a fresh judge
-has no memory of writing the code it now grades. Forge defines seven
-subagents, called seats, in <code>.claude/agents/</code>. See the
+has no memory of writing the code it now grades. Forge defines seven seats in
+<code>.claude/agents/</code>, and each pins its own model and effort, so none
+inherits the session. See the
 <a href="https://code.claude.com/docs/en/sub-agents">subagents reference</a>.</p>
 
 <h3>Hooks</h3>
@@ -185,32 +202,45 @@ scripts in <code>scripts/</code>. See the
 <p>A <em>skill</em> is a markdown file of knowledge or procedure that loads
 into context only when needed, so it costs nothing until it is used. Forge
 keeps its quality bar, design runbook, stack defaults, deploy runbooks,
-launch checklist, compliance triggers, and workflow patterns as seven skills
+launch checklist, compliance triggers, and workflow rules as seven skills
 in <code>.claude/skills/</code>. See the
 <a href="https://code.claude.com/docs/en/skills">skills reference</a>.</p>
+
+<h3>Workflows</h3>
+<p>A <em>workflow</em> is a JavaScript file that spawns and coordinates
+subagents with its control flow in code. A loop the lead ran turn by turn
+would grow the lead's context on every pass; a loop in a script costs the lead
+one launch and one summary. Forge keeps two in <code>.claude/workflows/</code>,
+and only the lead runs them. See the
+<a href="https://code.claude.com/docs/en/workflows">workflows reference</a>.</p>
 
 <p>One more term you will meet: <em>MCP servers</em> connect Claude Code to
 outside tools over the
 <a href="https://code.claude.com/docs/en/mcp">Model Context Protocol</a>.
 Forge uses one, Claude Design, for the design phase.</p>
 
-<h3>The three failure modes</h3>
-<p>Everything above exists to beat three ways an autonomous session fails:</p>
+<h3>The four failure modes</h3>
+<p>Everything above exists to beat four ways an autonomous session fails:</p>
 <table>
 <tr><th>Failure mode</th><th>What it looks like</th><th>What answers it</th></tr>
 <tr><td>Agentic laziness</td><td>The session stops at partial progress and
-declares victory</td><td>The Stop gate (<code>dod-gate.sh</code> blocks the
-session from ending while rubric lines sit unchecked) and the native
-<code>/goal</code> evaluator, which re-checks the completion condition after
-every turn</td></tr>
+declares victory</td><td>The Stop gate: <code>dod-gate.sh</code> blocks the
+turn from ending while armed rubric lines sit unchecked. The last line, V0,
+closes only when the final verifier rules that every other line
+holds</td></tr>
 <tr><td>Self-preferential bias</td><td>The model grades its own work and
-finds it excellent</td><td>The verifier seat: fresh context every dispatch,
-forbidden from editing source, ruling only with evidence</td></tr>
+finds it excellent</td><td><code>gate.mjs</code>, which runs commands rather
+than opinions, and the verifier: fresh context, never the builder's
+reasoning, and a holdout suite the builder never sees</td></tr>
 <tr><td>Goal drift</td><td>Constraints quietly vanish across context
 compaction</td><td>The state files: <code>snapshot.sh</code> saves them
 before every compaction, <code>rehydrate.sh</code> reloads them at every
 session start, and the compact policy in CLAUDE.md names what must
 survive</td></tr>
+<tr><td>Bar drift</td><td>A check is quietly edited until it
+passes</td><td><code>arm.sh</code> pins the approved rubric to a commit, and
+<code>dod-check.mjs</code> runs every check from that commit, so an edited
+command is ignored</td></tr>
 </table>
 
 <h2 id="setup">3. Setup on a fresh machine</h2>
@@ -221,9 +251,9 @@ before moving on. Commands are for macOS or Linux.</p>
 <li>Install Claude Code and check the version.
 <pre><code>npm install -g @anthropic-ai/claude-code
 claude --version</code></pre>
-<p class="expect">Expect a version of 2.1.233 or later, for example
-<code>2.1.233 (Claude Code)</code>. Dynamic workflows need 2.1.154+ and
-<code>/goal</code> ships in current versions.</p></li>
+<p class="expect">Expect <code>2.1.288 (Claude Code)</code> or later. v2 was
+built on 2.1.288 and relies on per-seat <code>effort</code>, full model ids,
+and workflows that pin model and effort on every agent.</p></li>
 
 <li>Sign in. Run <code>claude</code> once in any folder; it opens a browser
 to authenticate.
@@ -234,8 +264,11 @@ then <code>/exit</code>.</p></li>
 <li>Check node and git.
 <pre><code>node --version
 git --version</code></pre>
-<p class="expect">Expect any recent versions. This machine showed
-<code>v24.18.0</code> and <code>git version 2.50.1</code>.</p></li>
+<p class="expect">Expect a version string from each. If git prints an Xcode
+license message instead, run <code>sudo xcodebuild -license accept</code> and
+check again. This step is not optional: <code>arm.sh</code> refuses to arm
+without working git, and <code>commit.sh</code> writes
+<code>.forge/COMMIT-BLOCKED</code> instead of committing.</p></li>
 
 <li>Authenticate the GitHub CLI (deploys and private repos need it).
 <pre><code>gh auth status</code></pre>
@@ -251,7 +284,7 @@ folder.</p></li>
 <li>Make the scripts executable.
 <pre><code>chmod +x scripts/*.sh</code></pre>
 <p class="expect">No output is success. <code>ls -l scripts/</code> should
-show <code>-rwxr-xr-x</code> on every file.</p></li>
+show <code>-rwxr-xr-x</code> on every <code>.sh</code> file.</p></li>
 
 <li>Add the Claude Design MCP server (documented command, user scope, added
 once for all projects), then sign in to it.
@@ -261,37 +294,37 @@ once for all projects), then sign in to it.
 
 <li>Verify everything.
 <pre><code>claude mcp list | grep design
-scripts/selftest.sh</code></pre>
+bash scripts/selftest.sh</code></pre>
 <p class="expect">Expect
 <code>claude-design: https://api.anthropic.com/v1/design/mcp (HTTP) - ✔ Connected</code>
 and a selftest ending in <code>selftest: all checks passed</code>. Inside a
 session, <code>/mcp</code> should list claude-design, <code>/agents</code>
-should list the eight seats, and typing <code>/</code> should offer
-<code>forge</code> plus the three workflow commands (design-directions,
-verify-fanout, defect-sweep).</p></li>
+should list the seven seats (scout, designer, design-critic, architect,
+builder, verifier, oracle), and typing <code>/</code> should offer
+<code>forge</code> plus the two workflows, build and design-directions. You
+never launch either by hand: the lead does, with the args they need.</p></li>
 </ol>
 
 <div class="warn"><strong>After any Claude Code update</strong>, run
-<code>scripts/selftest.sh</code> once. It re-checks every hook script, both
-gate states, the workflow syntax, and the settings file, and exits non-zero
-on the first drift. Platform updates are when drift happens.</div>
+<code>bash scripts/selftest.sh</code> once. It re-checks every hook script,
+the gate states, the model pins, the settings file, and the workflow syntax,
+and it simulates the build workflow's ladder with agents stubbed. It exits
+non-zero when anything drifted. Platform updates are when drift happens.</div>
 
 <h2 id="first-run">4. Your first run</h2>
 <p>Run this once interactively on a throwaway goal before trusting the
-pipeline with a real one. Make an empty project and copy the harness in
-(each product repo carries its own copy of the hooks and agents):</p>
+pipeline with a real one. From the folder that holds the harness, make an
+empty project, copy the harness in (each product repo carries its own copy of
+the hooks, seats and scripts), and stamp the copy so drift shows up later:</p>
 <pre><code>mkdir moon-test && cd moon-test && git init
 cp -R ../agentic-goal-harness/.claude ../agentic-goal-harness/scripts \
       ../agentic-goal-harness/CLAUDE.md .
+node ../agentic-goal-harness/scripts/manifest.mjs sync . --adopt
 claude</code></pre>
-<p>Pick the session profile before you start:
-<code>/model claude-opus-5</code> and <code>/effort xhigh</code>. The
-judgment seats (designer, architect, verifier) inherit the session model, so
-this choice sets them too; reserve Fable 5 for goals that earn a flagship
-session. Do not use ultracode here: it opts the session into workflow
-orchestration, and an S goal like this one never uses a workflow. Save
-ultracode for opening L-sized build sessions. Section 5 opens with the full
-profile table by size, with examples.</p>
+<p>Open the session on Opus 5.5 with <code>/model claude-opus-5-5</code>, and
+leave effort alone: the project settings already set it to high. You do not
+pick models for the seats. Each pins its own, and the lead never overrides
+them. Fable never runs the session; it runs only as the oracle.</p>
 <p>Then, at the prompt:</p>
 <pre><code>/forge "a one-page site that shows the current moon phase"</code></pre>
 <p>What you will see, phase by phase:</p>
@@ -301,83 +334,85 @@ hard constraints, taste references. Answer them. Then check that your words
 landed: <code>cat .forge/BRIEF.md</code> should show the goal line and your
 three answers under their headings. This is the first check headless testing
 cannot prove, so look at it yourself.</li>
-<li><strong>Size.</strong> The router seat returns one letter with one
-reason. This goal sizes S, so scout and design are skipped: no research, no
-personas, no designer. Simple stays simple.</li>
+<li><strong>Size.</strong> The lead decides it in one line and records it in
+<code>.forge/RESUME.md</code> as <code>Size: S, &lt;reason&gt;</code>. This
+goal sizes S, so there is no scout and no research. If you answered "runs
+locally", there is no design phase either: the architect writes a four-line
+direction card instead. Simple stays simple.</li>
 <li><strong>Plan.</strong> The architect writes <code>.forge/PLAN.md</code>
-(stack plus vertical slices) and <code>.forge/DOD.md</code>, the rubric.
-Read the rubric: every line is a checkbox with a command or capture behind
-it.</li>
-<li><strong>Greenlight.</strong> The run stops and presents the plan, the
-full rubric, and (on sized M and L goals) the design link, and it writes
-<code>.forge/GREENLIGHT.md</code>, a phone-sized summary. A desktop
-notification pings when the gate is waiting; that ping is the second check
-to confirm interactively. <strong>Do not approve.</strong> This test ends
-at the gate.</li>
+(the stack, the checks the gate will run, one or two slices),
+<code>.forge/DOD.md</code>, <code>.forge/PREFLIGHT.md</code>, and the holdout
+suite. Read the rubric: every line ends in <code>check:</code>,
+<code>judge:</code> or <code>operator:</code>, and the last line is
+<code>V0 | final verifier PASS</code>.</li>
+<li><strong>Greenlight.</strong> The run enters plan mode and presents the
+plan, the full rubric, and the pre-flight output. It also writes
+<code>.forge/GREENLIGHT.md</code>, a phone-sized summary with a Fable block:
+whether the plan audit ran (on this goal it will not) and the call cap. A
+desktop notification pings when the gate is waiting; that ping is the second
+check to confirm interactively. <strong>Do not approve.</strong> This test
+ends at the gate.</li>
 <li><strong>Resume.</strong> Quit the session entirely, then reopen:
 <pre><code>claude --continue</code></pre>
 The first thing in context is the FORGE STATE block injected by
 <code>rehydrate.sh</code>: the resume pointer, the unchecked rubric lines,
-and the line <code>Awaiting greenlight. Nothing armed yet.</code> with the
-exact /goal command to paste on approval. That block appearing is the third
-interactive check. The gate is still closed; nothing was re-asked, nothing
-was built.</li>
+and the line <code>Awaiting greenlight. Nothing armed yet.</code> That block
+appearing is the third interactive check. Nothing was re-asked, nothing was
+armed, nothing was built.</li>
 </ol>
 
 <h2 id="real-run">5. How a real run works</h2>
 
-<h3>Pick the session profile by expected size</h3>
-<p>The router rules on size at phase 2, but you choose the model and effort
-before typing <code>/forge</code>, and the judgment seats inherit that
-choice. Estimate the size with three questions: how many screens, does
-anything persist (accounts, stored data), and could independent workstreams
-run in parallel?</p>
+<h3>What the size decides</h3>
+<p>The lead sizes the goal in one line, from the brief. You no longer pick a
+session profile by size: every seat pins its own model and effort, and the
+session is Opus 5.5 at high effort whatever the size. The size decides which
+seats run and how much verification the run buys.</p>
 <table>
-<tr><th>Size</th><th>It looks like</th><th>Examples</th><th>Start the session with</th></tr>
-<tr><td>S</td><td>one feature, page, or utility; no accounts, no stored
-data; an evening of work</td><td>the moon-phase page; a unit converter; a
-landing page for an existing product</td><td><code>/model claude-opus-5</code>,
-<code>/effort xhigh</code></td></tr>
-<tr><td>M</td><td>a multi-screen product on one stack; accounts, data, a
+<tr><th>Size</th><th>It looks like</th><th>Examples</th><th>What it gets</th></tr>
+<tr><td>S</td><td>one feature, page, or utility on one stack; no accounts,
+no stores</td><td>the moon-phase page; a unit converter; a landing page for
+an existing product</td><td>one or two slices, one builder dispatch each, and
+the final verifier. No scout, no worktrees, no workflow beyond build. One
+designer dispatch when the goal ships beyond your machine, kept or struck at
+the greenlight</td></tr>
+<tr><td>M</td><td>a multi-screen product on one stack; accounts, data, or a
 deploy target</td><td>a collectors app with lists and trades; a habit
-tracker with sync; a recipe box with search and tags</td><td>Opus 5 and
-xhigh on a standard day; Fable 5 and xhigh when the goal earns flagship
-judgment, taste-heavy or design-led</td></tr>
-<tr><td>L</td><td>independent workstreams that could run at once; multiple
-platforms; a migration alongside new features</td><td>web and mobile shipped
-together; a marketplace with buyer, seller, and payment flows; a rewrite of
-a live product while it keeps shipping</td><td>Opus 5 and xhigh, or Fable 5
-when the week can afford a flagship session; open the build phase in an
-ultracode session</td></tr>
+tracker with sync; a recipe box with search and tags</td><td>adds the scout,
+the designer, the blind design-critic, and a milestone verify after the
+core-loop slice</td></tr>
+<tr><td>L</td><td>parallel streams, migrations, or multiple
+platforms</td><td>web and mobile shipped together; a marketplace with buyer,
+seller, and payment flows; a rewrite of a live product while it keeps
+shipping</td><td>adds two or three parallel builders when scopes are
+disjoint, the design-directions workflow, and a Fable plan audit, since L is
+itself a trigger</td></tr>
 </table>
-<p>Two rules keep a wrong guess cheap. First, your estimate only sets who
-judges; the router's letter is the one that counts, and <code>/model</code>
-and <code>/effort</code> switch mid-session, so adjust at the greenlight if
-the router disagrees with you. An L verdict adds its own note there
-recommending ultracode for the build. Second, ultracode never opens an S or
-M run: it exists to orchestrate workflows at scale, which S never uses and M
-needs only for the lead-run design-directions workflow.</p>
 
 <figure>
-<svg viewBox="0 0 360 700" role="img" aria-label="The forge pipeline, nine phases with the single human gate marked between plan and build">
+<svg viewBox="0 0 360 700" role="img" aria-label="The forge pipeline, nine phases with the single human gate marked between plan and build, and build and verify inside one background workflow">
 <defs><marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#9a958a"/></marker></defs>
 <style>
  .bx{fill:var(--panel);stroke:var(--line);rx:8;}
  .gt{fill:none;stroke:var(--gate);stroke-width:2;rx:8;}
+ .wf{fill:none;stroke:#9a958a;stroke-width:1.2;stroke-dasharray:4 4;rx:10;}
  .tt{font:600 14px system-ui,sans-serif;fill:var(--ink);}
  .ss{font:12px system-ui,sans-serif;fill:var(--dim);}
  .fl{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar);}
  .sk{stroke:#9a958a;stroke-width:1.5;fill:none;stroke-dasharray:4 4;marker-end:url(#ar);}
 </style>
 <rect class="bx" x="80" y="8"  width="200" height="44"/><text class="tt" x="180" y="27" text-anchor="middle">1 Intake</text><text class="ss" x="180" y="43" text-anchor="middle">three questions, BRIEF.md</text>
-<rect class="bx" x="80" y="82" width="200" height="44"/><text class="tt" x="180" y="101" text-anchor="middle">2 Size</text><text class="ss" x="180" y="117" text-anchor="middle">router returns S, M, or L</text>
-<rect class="bx" x="80" y="156" width="200" height="44"/><text class="tt" x="180" y="175" text-anchor="middle">3 Scout</text><text class="ss" x="180" y="191" text-anchor="middle">M and L only, research</text>
-<rect class="bx" x="80" y="230" width="200" height="44"/><text class="tt" x="180" y="249" text-anchor="middle">4 Design</text><text class="ss" x="180" y="265" text-anchor="middle">panel, then Claude Design</text>
-<rect class="bx" x="80" y="304" width="200" height="44"/><text class="tt" x="180" y="323" text-anchor="middle">5 Plan</text><text class="ss" x="180" y="339" text-anchor="middle">architect: PLAN.md, DOD.md</text>
-<rect class="gt" x="80" y="378" width="200" height="58"/><text class="tt" x="180" y="399" text-anchor="middle" fill="var(--gate)">6 Greenlight + arm</text><text class="ss" x="180" y="415" text-anchor="middle">the one human gate</text><text class="ss" x="180" y="429" text-anchor="middle">approve, then paste /goal</text>
-<rect class="bx" x="80" y="466" width="200" height="44"/><text class="tt" x="180" y="485" text-anchor="middle">7 Build</text><text class="ss" x="180" y="501" text-anchor="middle">builder, slice by slice</text>
-<rect class="bx" x="80" y="540" width="200" height="44"/><text class="tt" x="180" y="559" text-anchor="middle">8 Verify</text><text class="ss" x="180" y="575" text-anchor="middle">adversarial, evidence only</text>
-<rect class="bx" x="80" y="614" width="200" height="44"/><text class="tt" x="180" y="633" text-anchor="middle">9 Ship</text><text class="ss" x="180" y="649" text-anchor="middle">finisher: deploy, REPORT.md</text>
+<rect class="bx" x="80" y="82" width="200" height="44"/><text class="tt" x="180" y="101" text-anchor="middle">2 Size</text><text class="ss" x="180" y="117" text-anchor="middle">the lead, in one line</text>
+<rect class="bx" x="80" y="156" width="200" height="44"/><text class="tt" x="180" y="175" text-anchor="middle">3 Scout</text><text class="ss" x="180" y="191" text-anchor="middle">M and L: research, Actors grid</text>
+<rect class="bx" x="80" y="230" width="200" height="44"/><text class="tt" x="180" y="249" text-anchor="middle">4 Design</text><text class="ss" x="180" y="265" text-anchor="middle">designer, then the blind critic</text>
+<rect class="bx" x="80" y="304" width="200" height="44"/><text class="tt" x="180" y="323" text-anchor="middle">5 Plan</text><text class="ss" x="180" y="339" text-anchor="middle">architect; oracle on a trigger</text>
+<rect class="gt" x="80" y="378" width="200" height="58"/><text class="tt" x="180" y="399" text-anchor="middle" fill="var(--gate)">6 Greenlight + arm</text><text class="ss" x="180" y="415" text-anchor="middle">the one human gate</text><text class="ss" x="180" y="429" text-anchor="middle">plan mode, then arm.sh</text>
+<rect class="wf" x="70" y="458" width="220" height="134"/>
+<text class="ss" x="296" y="520">build.js,</text>
+<text class="ss" x="296" y="535">background</text>
+<rect class="bx" x="80" y="466" width="200" height="44"/><text class="tt" x="180" y="485" text-anchor="middle">7 Build</text><text class="ss" x="180" y="501" text-anchor="middle">builder, then gate.mjs</text>
+<rect class="bx" x="80" y="540" width="200" height="44"/><text class="tt" x="180" y="559" text-anchor="middle">8 Verify</text><text class="ss" x="180" y="575" text-anchor="middle">milestone and final verifier</text>
+<rect class="bx" x="80" y="614" width="200" height="44"/><text class="tt" x="180" y="633" text-anchor="middle">9 Ship</text><text class="ss" x="180" y="649" text-anchor="middle">the lead: deploy, REPORT.md</text>
 <line class="fl" x1="180" y1="52" x2="180" y2="78"/>
 <line class="fl" x1="180" y1="126" x2="180" y2="152"/>
 <line class="fl" x1="180" y1="200" x2="180" y2="226"/>
@@ -391,54 +426,108 @@ needs only for the lead-run design-directions workflow.</p>
 <text class="ss" x="30" y="228">4 optional</text>
 </svg>
 <figcaption>The pipeline. One box is outlined: the greenlight is the only
-point where a human decides. S-sized goals skip scout and design
-entirely.</figcaption>
+point where a human decides. Build and verify run inside one background
+workflow. S goals skip the scout, and design runs on S only when the goal
+ships beyond your machine.</figcaption>
 </figure>
 
 <p>Phase by phase, who runs and what lands on disk:</p>
 <table>
 <tr><th>Phase</th><th>Who runs</th><th>Model</th><th>Writes</th></tr>
-<tr><td>Intake</td><td>the lead</td><td>session model</td><td>.forge/BRIEF.md</td></tr>
-<tr><td>Size</td><td>router seat</td><td>haiku</td><td>size and reason, recorded by the lead</td></tr>
-<tr><td>Scout (M, L)</td><td>scout seat</td><td>sonnet</td><td>Research section of BRIEF.md</td></tr>
-<tr><td>Design (M, L; proposed on deployed S, kept or struck at the gate)</td><td>scout writes the Actors grid, lead runs design-directions, then the designer seat, then the blind design-critic</td><td>session model</td><td>Actors grid in BRIEF.md, then .forge/SCREENS.md and .forge/DESIGN.md with Claude Design links</td></tr>
-<tr><td>Plan</td><td>architect seat</td><td>session model</td><td>.forge/PLAN.md, .forge/DOD.md</td></tr>
-<tr><td>Greenlight</td><td>you</td><td></td><td>.forge/GREENLIGHT.md, then .forge/ARMED on approval</td></tr>
-<tr><td>Build</td><td>builder seat, one slice per dispatch</td><td>sonnet</td><td>code, commits, .forge/EVIDENCE.md lines</td></tr>
-<tr><td>Verify</td><td>verifier seat, fresh context</td><td>session model</td><td>verdicts, checked rubric lines</td></tr>
-<tr><td>Ship</td><td>finisher seat</td><td>sonnet</td><td>the deployment, launch/ when in scope, .forge/REPORT.md</td></tr>
+<tr><td>Intake</td><td>the lead</td><td>Opus 5.5, high</td><td>.forge/BRIEF.md</td></tr>
+<tr><td>Size</td><td>the lead, inline</td><td>Opus 5.5, high</td><td>the <code>Size:</code> line in RESUME.md</td></tr>
+<tr><td>Research (M, L)</td><td>scout seat</td><td>Sonnet 5.5, medium</td><td>Research and the Actors grid in BRIEF.md</td></tr>
+<tr><td>Design (M, L; proposed on deployed S, kept or struck at the gate)</td><td>designer seat, then the blind design-critic on blurred captures; the design-directions workflow first on L, or when the taste references pull apart</td><td>designer Opus 5.5, high; critic Sonnet 5.5, medium</td><td>.forge/SCREENS.md, .forge/DESIGN.md, exported screens, Claude Design links</td></tr>
+<tr><td>Plan</td><td>architect seat</td><td>Opus 5.5, high</td><td>.forge/PLAN.md, .forge/DOD.md, .forge/PREFLIGHT.md, .forge/holdout/</td></tr>
+<tr><td>Plan audit (on a trigger only)</td><td>oracle seat; findings go to the architect once</td><td>Fable 5.1, high</td><td>nothing; it is read-only</td></tr>
+<tr><td>Greenlight</td><td>you</td><td></td><td>.forge/GREENLIGHT.md, then .forge/ARMED through arm.sh on approval</td></tr>
+<tr><td>Build</td><td>build.js: a builder per slice, then gate.mjs run by a small agent</td><td>builder Opus 5.5, medium; Sonnet 5.5 on light slices; Opus 5.5, high on the second FAIL. Gate runner Sonnet 5.5, low</td><td>code, slice commits, EVIDENCE.md, ATTEMPTS.json</td></tr>
+<tr><td>Verify</td><td>build.js: verifier seat, fresh context, at the milestone (M, L) and at the end</td><td>Opus 5.5, high</td><td>rulings in DOD.md, only through dod-check.mjs; V0 last</td></tr>
+<tr><td>Ship</td><td>the lead, through the ship skill; launch-kit forked on Sonnet when in scope</td><td>Opus 5.5, high</td><td>the deployment, launch assets, .forge/REPORT.md</td></tr>
 </table>
 
 <figure>
-<svg viewBox="0 0 360 434" role="img" aria-label="Seven agent seats with their models and tool scopes">
+<svg viewBox="0 0 360 434" role="img" aria-label="Seven seats with their pinned models, efforts and tool scopes">
 <style>
  .abx{fill:var(--panel);stroke:var(--line);rx:8;}
  .an{font:600 13px system-ui,sans-serif;fill:var(--ink);}
  .am{font:600 11px ui-monospace,Menlo,monospace;fill:var(--accent);}
  .at{font:11px ui-monospace,Menlo,monospace;fill:var(--dim);}
 </style>
-<rect class="abx" x="4" y="4" width="352" height="54"/><text class="an" x="16" y="24">router</text><text class="am" x="300" y="24">haiku</text><text class="at" x="16" y="44">Read, Grep, Glob · sizes the goal, nothing else</text>
-<rect class="abx" x="4" y="66" width="352" height="54"/><text class="an" x="16" y="86">scout</text><text class="am" x="290" y="86">sonnet</text><text class="at" x="16" y="106">WebSearch, WebFetch, Read · market and obligations</text>
-<rect class="abx" x="4" y="128" width="352" height="54"/><text class="an" x="16" y="148">designer</text><text class="am" x="284" y="148">inherit</text><text class="at" x="16" y="168">Read, Write, web + claude-design MCP · screens, DESIGN.md</text>
-<rect class="abx" x="4" y="190" width="352" height="54"/><text class="an" x="16" y="210">architect</text><text class="am" x="284" y="210">inherit</text><text class="at" x="16" y="230">Read, Grep, Glob, web · stack, slices, the rubric</text>
-<rect class="abx" x="4" y="252" width="352" height="54"/><text class="an" x="16" y="272">builder</text><text class="am" x="290" y="272">sonnet</text><text class="at" x="16" y="292">Read, Grep, Glob, Edit, Write, Bash · one slice per dispatch</text>
-<rect class="abx" x="4" y="314" width="352" height="54"/><text class="an" x="16" y="334">verifier</text><text class="am" x="284" y="334">inherit</text><text class="at" x="16" y="354">Read, Grep, Glob, Bash, WebFetch · rules with evidence, never edits</text>
-<rect class="abx" x="4" y="376" width="352" height="54"/><text class="an" x="16" y="396">finisher</text><text class="am" x="290" y="396">sonnet</text><text class="at" x="16" y="416">Read, Bash · deploys, launch assets, REPORT.md</text>
+<rect class="abx" x="4" y="4" width="352" height="54"/><text class="an" x="16" y="24">scout</text><text class="am" x="344" y="24" text-anchor="end">sonnet-5-5 medium</text><text class="at" x="16" y="44">web, Read, Write, Edit · research, Actors grid</text>
+<rect class="abx" x="4" y="66" width="352" height="54"/><text class="an" x="16" y="86">designer</text><text class="am" x="344" y="86" text-anchor="end">opus-5-5 high</text><text class="at" x="16" y="106">Read, Write, web, Claude Design · screens</text>
+<rect class="abx" x="4" y="128" width="352" height="54"/><text class="an" x="16" y="148">design-critic</text><text class="am" x="344" y="148" text-anchor="end">sonnet-5-5 medium</text><text class="at" x="16" y="168">Read only · judges blurred captures, blind</text>
+<rect class="abx" x="4" y="190" width="352" height="54"/><text class="an" x="16" y="210">architect</text><text class="am" x="344" y="210" text-anchor="end">opus-5-5 high</text><text class="at" x="16" y="230">Read, Write, Bash, web · plan, rubric</text>
+<rect class="abx" x="4" y="252" width="352" height="54"/><text class="an" x="16" y="272">oracle</text><text class="am" x="344" y="272" text-anchor="end">fable-5-1 high</text><text class="at" x="16" y="292">Read, Grep, Glob · on a trigger, cap 3</text>
+<rect class="abx" x="4" y="314" width="352" height="54"/><text class="an" x="16" y="334">builder</text><text class="am" x="344" y="334" text-anchor="end">opus-5-5 medium</text><text class="at" x="16" y="354">Edit, Write, Bash · one slice, the only writer</text>
+<rect class="abx" x="4" y="376" width="352" height="54"/><text class="an" x="16" y="396">verifier</text><text class="am" x="344" y="396" text-anchor="end">opus-5-5 high</text><text class="at" x="16" y="416">Read, Bash, WebFetch · rules, never edits</text>
 </svg>
-<figcaption>The eight seats. <code>inherit</code> means the session model:
-the judgment seats are as strong as the day you opened the session. No seat
-carries the Agent tool; every fan-out belongs to the lead.</figcaption>
+<figcaption>The seven seats, each pinned to an exact model and effort. Nothing
+inherits the session. The builder drops to Sonnet 5.5 on light slices and
+climbs to Opus 5.5 high on a second FAIL; those are the build workflow's
+pins, not the lead's. No seat carries the Agent tool: the lead and the build
+workflow do all dispatching.</figcaption>
 </figure>
 
 <h2 id="build-loop">6. The build loop after approval</h2>
-<p>On approval the lead creates <code>.forge/ARMED</code>, you paste the
-/goal line, and the loop below runs with no further questions. Every file
-edit triggers <code>checks.sh</code> (typecheck and lint feedback), every
-risky command passes <code>guard.sh</code>, and every subagent finish lands
-one line in <code>RUNLOG.md</code>.</p>
+<p>On approval the lead leaves plan mode and runs <code>scripts/arm.sh</code>,
+which commits the approved rubric, plan, checks and holdout, and writes
+<code>.forge/ARMED</code>: the pinned sha and the Fable cap. Then it runs
+<code>node scripts/slices.mjs --open</code>, writes <code>.forge/BUILDING</code>
+with its session id, launches <code>build.js</code> in the background, and
+ends its turn. The workflow's completion notice wakes it. Nothing is pasted
+and nothing is asked. While the workflow runs, every file edit triggers only a
+throttled commit (at most one per ten minutes), every Bash command passes
+<code>guard.sh</code>, and every named seat's finish lands one line in
+<code>RUNLOG.md</code>.</p>
+
+<p>Inside the workflow, per slice:</p>
+<ol class="steps">
+<li><strong>Builder.</strong> Records the pre-slice commit as the slice's
+base, builds inside the slice's declared scope, runs its own checks, and
+commits. It gets a clock: aim for 20, 30 or 40 minutes by size, and at twice
+that, commit and hand back partial.</li>
+<li><strong>Gate.</strong> A Sonnet 5.5 agent at low effort runs
+<code>node scripts/gate.mjs &lt;slice&gt;</code> and reports its verdict
+verbatim. The gate runs the pinned typecheck, lint and tests, the build when
+declared, the slice's check lines through <code>dod-check.mjs</code>, and a scan of the
+slice diff for added suppressions. It never runs the holdout.</li>
+<li><strong>Ladder.</strong> PASS: the slice is green. FAIL 1: the builder
+again, with the gate output. FAIL 2: the builder on Opus 5.5 at high effort.
+FAIL 3: stuck, back to the lead. A partial hand-back gets one continuation
+and then needs a re-slice; it never counts as a FAIL. UNKNOWN means something
+could not run: the slice is blocked on a prerequisite and never climbs the
+ladder.</li>
+<li><strong>Milestone (M and L).</strong> After the slice that completes the
+core loop, the verifier re-runs every check closed so far, un-ticks any
+regression, and rules the judge lines in scope.</li>
+</ol>
+<p>After the last slice the final verifier re-runs every check from the armed
+commit, walks the core loop as each actor in the grid, runs the holdout
+suite, sweeps the disqualifiers, and runs <code>dod-check.mjs --rule</code>,
+which ticks V0 only when every other line holds. A failed judge line is
+re-judged once in a fresh context first, because a model judge's false
+negatives run near a quarter. What still fails gets one fix round, then one
+more final verify.</p>
+
+<p>On L, two or three builders may run at once when the architect put their
+slices in one group: disjoint scopes, no shared surface, the interface
+committed first, one base commit, and merges one at a time with the gate
+between them. The gain is wall clock, never tokens.</p>
+
+<p>When the workflow returns, the lead removes <code>BUILDING</code> whatever
+the outcome, updates RESUME.md, and acts:</p>
+<table>
+<tr><th>Return</th><th>What the lead does</th></tr>
+<tr><td>done</td><td>ships</td></tr>
+<tr><td>stuck</td><td>calls the oracle if a stuck trigger holds and the cap allows, and applies its one action. Otherwise rewinds: <code>git reset --hard</code> to the slice's base from <code>attempt.mjs state</code>, a re-slice by the architect, <code>attempt.mjs reset</code>, <code>arm.sh --amend</code>, relaunch</td></tr>
+<tr><td>needs-reslice</td><td>the same re-slice, with no oracle</td></tr>
+<tr><td>blocked</td><td>names the prerequisite in RESUME.md, relaunches if other slices can still build, otherwise parks</td></tr>
+<tr><td>open lines after verify</td><td>the oracle for a line with two or more defects after a gate PASS, cap permitting; otherwise relaunches with <code>fixIds</code> at most twice, then parks</td></tr>
+</table>
 
 <figure>
-<svg viewBox="0 0 360 470" role="img" aria-label="Build, verify, escalate loop">
+<svg viewBox="0 0 360 500" role="img" aria-label="Build, gate, escalate loop inside the build workflow">
 <defs><marker id="ar2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#9a958a"/></marker></defs>
 <style>
  .bbx{fill:var(--panel);stroke:var(--line);rx:8;}
@@ -447,28 +536,38 @@ one line in <code>RUNLOG.md</code>.</p>
  .bs{font:11px system-ui,sans-serif;fill:var(--dim);}
  .bf{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar2);}
 </style>
-<rect class="bbx" x="90" y="6" width="180" height="46"/><text class="bt" x="180" y="26" text-anchor="middle">builder takes a slice</text><text class="bs" x="180" y="42" text-anchor="middle">from PLAN.md, design bundle</text>
-<rect class="bbx" x="90" y="88" width="180" height="46"/><text class="bt" x="180" y="108" text-anchor="middle">green slice commits</text><text class="bs" x="180" y="124" text-anchor="middle">evidence.sh records proof</text>
-<rect class="bbx" x="90" y="170" width="180" height="46"/><text class="bt" x="180" y="190" text-anchor="middle">verifier rules</text><text class="bs" x="180" y="206" text-anchor="middle">fresh context, every line</text>
-<rect class="gbx" x="20" y="266" width="150" height="44"/><text class="bt" x="95" y="286" text-anchor="middle" fill="var(--good)">PASS at 100%</text><text class="bs" x="95" y="302" text-anchor="middle">next slice, or ship</text>
-<rect class="bbx" x="190" y="266" width="150" height="44"/><text class="bt" x="265" y="286" text-anchor="middle">FAIL</text><text class="bs" x="265" y="302" text-anchor="middle">numbered defect list</text>
-<rect class="bbx" x="190" y="344" width="160" height="44"/><text class="bt" x="270" y="364" text-anchor="middle">2 FAILs, same slice</text><text class="bs" x="270" y="380" text-anchor="middle">builder model up one tier</text>
-<rect class="bbx" x="190" y="420" width="160" height="44"/><text class="bt" x="270" y="440" text-anchor="middle">3 FAILs, same slice</text><text class="bs" x="270" y="456" text-anchor="middle">architect re-plans the slice</text>
+<rect class="bbx" x="90" y="6" width="180" height="46"/><text class="bt" x="180" y="26" text-anchor="middle">builder takes a slice</text><text class="bs" x="180" y="42" text-anchor="middle">pinned model, a clock, one scope</text>
+<rect class="bbx" x="90" y="88" width="180" height="46"/><text class="bt" x="180" y="108" text-anchor="middle">gate.mjs</text><text class="bs" x="180" y="124" text-anchor="middle">typecheck, lint, tests, checks</text>
+<rect class="gbx" x="20" y="170" width="150" height="44"/><text class="bt" x="95" y="190" text-anchor="middle" fill="var(--good)">PASS: green</text><text class="bs" x="95" y="206" text-anchor="middle">commit, next slice</text>
+<rect class="bbx" x="190" y="170" width="150" height="44"/><text class="bt" x="265" y="190" text-anchor="middle">FAIL</text><text class="bs" x="265" y="206" text-anchor="middle">retry with gate output</text>
+<rect class="bbx" x="190" y="248" width="160" height="44"/><text class="bt" x="270" y="268" text-anchor="middle">second FAIL</text><text class="bs" x="270" y="284" text-anchor="middle">builder on Opus 5.5 high</text>
+<rect class="bbx" x="190" y="326" width="160" height="44"/><text class="bt" x="270" y="346" text-anchor="middle">third FAIL: stuck</text><text class="bs" x="270" y="362" text-anchor="middle">back to the lead</text>
+<rect class="bbx" x="190" y="404" width="160" height="44"/><text class="bt" x="270" y="424" text-anchor="middle">oracle or re-slice</text><text class="bs" x="270" y="440" text-anchor="middle">oracle only on a trigger</text>
+<rect class="bbx" x="20" y="248" width="150" height="44"/><text class="bt" x="95" y="268" text-anchor="middle">milestone verify</text><text class="bs" x="95" y="284" text-anchor="middle">after the core-loop slice</text>
+<rect class="bbx" x="20" y="326" width="150" height="44"/><text class="bt" x="95" y="346" text-anchor="middle">final verifier</text><text class="bs" x="95" y="362" text-anchor="middle">re-judge once, fix once</text>
+<rect class="gbx" x="20" y="404" width="150" height="44"/><text class="bt" x="95" y="424" text-anchor="middle" fill="var(--good)">V0 ticked</text><text class="bs" x="95" y="440" text-anchor="middle">the lead ships</text>
 <line class="bf" x1="180" y1="52" x2="180" y2="84"/>
-<line class="bf" x1="180" y1="134" x2="180" y2="166"/>
-<line class="bf" x1="140" y1="216" x2="105" y2="262"/>
-<line class="bf" x1="220" y1="216" x2="255" y2="262"/>
-<line class="bf" x1="265" y1="310" x2="268" y2="340"/>
-<line class="bf" x1="270" y1="388" x2="270" y2="416"/>
-<path class="bf" d="M190 288 C 40 260 40 60 86 32"/>
-<path class="bf" d="M350 366 C 358 200 320 60 274 24"/>
-<text class="bs" x="30" y="150">defects go back</text>
-<text class="bs" x="30" y="164">to the builder</text>
+<line class="bf" x1="140" y1="134" x2="105" y2="166"/>
+<line class="bf" x1="220" y1="134" x2="255" y2="166"/>
+<line class="bf" x1="95" y1="214" x2="95" y2="244"/>
+<line class="bf" x1="95" y1="292" x2="95" y2="322"/>
+<line class="bf" x1="95" y1="370" x2="95" y2="400"/>
+<line class="bf" x1="265" y1="214" x2="268" y2="244"/>
+<line class="bf" x1="270" y1="292" x2="270" y2="322"/>
+<line class="bf" x1="270" y1="370" x2="270" y2="400"/>
+<path class="bf" d="M340 184 C 356 120 340 30 274 24"/>
+<path class="bf" d="M350 262 C 362 160 350 40 274 36"/>
+<path class="bf" d="M20 184 C 2 120 20 36 86 30"/>
+<text class="bs" x="280" y="76">retry</text>
+<text class="bs" x="30" y="96">next</text>
+<text class="bs" x="30" y="110">slice</text>
+<text class="bs" x="4" y="476">UNKNOWN from the gate is neither: the slice is blocked on</text>
+<text class="bs" x="4" y="492">a prerequisite and never climbs the ladder.</text>
 </svg>
-<figcaption>The escalation ladder moves resources, never the bar: two FAILs
-raise the builder's model a tier (sonnet to opus, opus to the session
-model), three send the slice back to the architect. No rubric line is ever
-softened to reach PASS.</figcaption>
+<figcaption>The escalation ladder moves resources, never the bar. Its count
+lives in <code>.forge/ATTEMPTS.json</code>, written through
+<code>attempt.mjs</code>, so a relaunch resumes at the right rung. No rubric
+line is ever softened to reach PASS.</figcaption>
 </figure>
 
 <figure>
@@ -481,15 +580,15 @@ softened to reach PASS.</figcaption>
  .hblock{font:600 10px system-ui,sans-serif;fill:var(--gate);}
 </style>
 <line class="hln" x1="26" y1="16" x2="26" y2="548"/>
-<circle class="hdot" cx="26" cy="30" r="5"/><text class="he" x="44" y="26">SessionStart → rehydrate.sh</text><text class="hs" x="44" y="42">injects RESUME, rubric, arming reminder</text>
+<circle class="hdot" cx="26" cy="30" r="5"/><text class="he" x="44" y="26">SessionStart → rehydrate.sh</text><text class="hs" x="44" y="42">injects RESUME and the rubric, clears a stale BUILDING</text>
 <circle class="hdot" cx="26" cy="90" r="5"/><text class="he" x="44" y="86">PreToolUse (Bash) → guard.sh</text><text class="hs" x="44" y="102">five denylist rules, exit 2 blocks the command</text><text class="hblock" x="44" y="116">CAN BLOCK</text>
-<circle class="hdot" cx="26" cy="160" r="5"/><text class="he" x="44" y="156">PostToolUse (Edit|Write) → checks.sh</text><text class="hs" x="44" y="172">typecheck and lint, failures shown to the model</text>
-<circle class="hdot" cx="26" cy="222" r="5"/><text class="he" x="44" y="218">SubagentStop → runlog.sh</text><text class="hs" x="44" y="234">appends one line per seat to RUNLOG.md</text>
-<circle class="hdot" cx="26" cy="284" r="5"/><text class="he" x="44" y="280">Notification → notify.sh</text><text class="hs" x="44" y="296">desktop ping when the run needs eyes</text>
-<circle class="hdot" cx="26" cy="346" r="5"/><text class="he" x="44" y="342">Stop → dod-gate.sh</text><text class="hs" x="44" y="358">blocks the turn ending while armed lines sit unchecked</text><text class="hblock" x="44" y="372">CAN BLOCK</text>
-<circle class="hdot" cx="26" cy="410" r="5"/><text class="he" x="44" y="406">StopFailure (rate_limit|overloaded) → checkpoint.sh</text><text class="hs" x="44" y="422">stamps RESUME.md the moment a limit kills a turn</text>
+<circle class="hdot" cx="26" cy="160" r="5"/><text class="he" x="44" y="156">PostToolUse (Edit|Write) → commit.sh</text><text class="hs" x="44" y="172">throttled commit, at most one per ten minutes</text>
+<circle class="hdot" cx="26" cy="222" r="5"/><text class="he" x="44" y="218">SubagentStop → runlog.sh</text><text class="hs" x="44" y="234">one RUNLOG line per named seat, throttled commit</text>
+<circle class="hdot" cx="26" cy="284" r="5"/><text class="he" x="44" y="280">Notification → notify.sh</text><text class="hs" x="44" y="296">desktop ping; silent while BUILDING exists</text>
+<circle class="hdot" cx="26" cy="346" r="5"/><text class="he" x="44" y="342">Stop → dod-gate.sh</text><text class="hs" x="44" y="358">blocks once on unchecked lines, then parks; yields mid-build</text><text class="hblock" x="44" y="372">CAN BLOCK</text>
+<circle class="hdot" cx="26" cy="410" r="5"/><text class="he" x="44" y="406">StopFailure (rate_limit|overloaded) → checkpoint.sh</text><text class="hs" x="44" y="422">stamps RESUME.md and commits when a limit kills a turn</text>
 <circle class="hdot" cx="26" cy="470" r="5"/><text class="he" x="44" y="466">PreCompact → snapshot.sh</text><text class="hs" x="44" y="482">copies the state files before summarization eats detail</text>
-<circle class="hdot" cx="26" cy="530" r="5"/><text class="he" x="44" y="526">SessionEnd → checkpoint.sh</text><text class="hs" x="44" y="542">stamps RESUME.md on every exit</text>
+<circle class="hdot" cx="26" cy="530" r="5"/><text class="he" x="44" y="526">SessionEnd → checkpoint.sh</text><text class="hs" x="44" y="542">stamps RESUME.md, commits, redraws the board</text>
 </svg>
 <figcaption>The nine hook registrations across a session's life, top to
 bottom. Two can block; the rest observe, record, or restore. Hooks never ask
@@ -498,25 +597,33 @@ questions.</figcaption>
 
 <h2 id="memory">7. Memory and interruption</h2>
 <p>Every phase writes to <code>.forge/</code> in the product repo. The
-session is disposable; these files are not.</p>
+session is disposable; these files are not. The build workflow is disposable
+too: it dies with the session that launched it, and everything it needs to
+resume is on disk.</p>
 <table>
 <tr><th>File</th><th>Holds</th></tr>
-<tr><td>BRIEF.md</td><td>the goal, your three intake answers, research, panel findings</td></tr>
-<tr><td>DESIGN.md</td><td>information architecture, screen links, tokens, interaction notes (M, L)</td></tr>
-<tr><td>PLAN.md</td><td>stack, slices, and the exact /goal line as its last line</td></tr>
-<tr><td>DOD.md</td><td>the rubric: checkboxes, three sections, disqualifiers</td></tr>
-<tr><td>GREENLIGHT.md</td><td>the phone-sized gate summary</td></tr>
-<tr><td>EVIDENCE.md</td><td>append-only proof lines: command outputs, URLs, screenshot paths</td></tr>
-<tr><td>RUNLOG.md</td><td>append-only black box: one line per subagent stop</td></tr>
-<tr><td>RESUME.md</td><td>last phase, current slice, next action; checkpoint stamps</td></tr>
-<tr><td>REPORT.md</td><td>the final report: links, evidence highlights, rubric state</td></tr>
-<tr><td>ARMED</td><td>exists only between approval and ship; activates the Stop gate</td></tr>
+<tr><td>BRIEF.md</td><td>the goal, your three intake answers, research, the Actors grid</td></tr>
+<tr><td>SCREENS.md, DESIGN.md</td><td>the screen grid, then architecture, screen links, tokens, interaction decisions</td></tr>
+<tr><td>PLAN.md</td><td>the stack, the checks the gate runs, and the slices with tier, scope, group and Closes list</td></tr>
+<tr><td>DOD.md</td><td>the rubric: one line per property, each with <code>check:</code>, <code>judge:</code> or <code>operator:</code>, V0 last</td></tr>
+<tr><td>PREFLIGHT.md</td><td>what you must install, create or authorise before the stack can reach a live URL</td></tr>
+<tr><td>GREENLIGHT.md</td><td>the phone-sized gate summary, Fable block included</td></tr>
+<tr><td>ARMED</td><td>the sha the rubric is pinned to and the Fable cap; exists between approval and ship, and activates the Stop gate</td></tr>
+<tr><td>BUILDING</td><td>exists only while build.js runs; holds the lead's session id</td></tr>
+<tr><td>ATTEMPTS.json</td><td>the ladder's ledger: fails, passes and base commit per slice</td></tr>
+<tr><td>EVIDENCE.md, DEFECTS.md</td><td>one line per proof and per defect; a defect closes only when its line passes</td></tr>
+<tr><td>AMENDMENTS.md</td><td>every post-greenlight rubric change, at most five lines each, re-armed</td></tr>
+<tr><td>RUNLOG.md</td><td>append-only black box: one line per seat dispatch and per oracle call</td></tr>
+<tr><td>RESUME.md</td><td>phase, size, open slices, next action; checkpoint stamps</td></tr>
+<tr><td>PARKED, COMMIT-BLOCKED</td><td>written only when the run rests on a named wait, or when commits stopped</td></tr>
+<tr><td>REPORT.md</td><td>the final report: links, evidence highlights, rubric state, what to watch</td></tr>
+<tr><td>holdout/</td><td>the verifier's acceptance suite; the builder never reads it</td></tr>
 <tr><td>PROGRESS.html</td><td>the run's status page, drawn from the files above; never edited by hand</td></tr>
 <tr><td>snapshots/</td><td>timestamped copies of the state files, taken before each compaction</td></tr>
 </table>
 
 <figure>
-<svg viewBox="0 0 360 300" role="img" aria-label="Interruption recovery path">
+<svg viewBox="0 0 360 380" role="img" aria-label="Interruption recovery path for a build that died with its session">
 <defs><marker id="ar3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#9a958a"/></marker></defs>
 <style>
  .rbx{fill:var(--panel);stroke:var(--line);rx:8;}
@@ -524,58 +631,54 @@ session is disposable; these files are not.</p>
  .rs{font:11px system-ui,sans-serif;fill:var(--dim);}
  .rf{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar3);}
 </style>
-<rect class="rbx" x="30" y="6" width="300" height="44"/><text class="rt" x="180" y="26" text-anchor="middle">rate limit kills the turn mid-slice</text><text class="rs" x="180" y="42" text-anchor="middle">StopFailure fires</text>
-<rect class="rbx" x="30" y="80" width="300" height="44"/><text class="rt" x="180" y="100" text-anchor="middle">checkpoint.sh stamps RESUME.md</text><text class="rs" x="180" y="116" text-anchor="middle">phase, slice, next action survive on disk</text>
-<rect class="rbx" x="30" y="154" width="300" height="44"/><text class="rt" x="180" y="174" text-anchor="middle">window resets: claude --continue</text><text class="rs" x="180" y="190" text-anchor="middle">SessionStart fires rehydrate.sh</text>
-<rect class="rbx" x="30" y="228" width="300" height="58"/><text class="rt" x="180" y="248" text-anchor="middle">FORGE STATE lands in context</text><text class="rs" x="180" y="264" text-anchor="middle">resume pointer, unchecked lines, and the /goal</text><text class="rs" x="180" y="278" text-anchor="middle">line to re-paste: the goal died with the session</text>
+<rect class="rbx" x="30" y="6" width="300" height="44"/><text class="rt" x="180" y="26" text-anchor="middle">the session dies mid-build</text><text class="rs" x="180" y="42" text-anchor="middle">a crash, a closed terminal, a quit</text>
+<rect class="rbx" x="30" y="80" width="300" height="44"/><text class="rt" x="180" y="100" text-anchor="middle">the ledger is already on disk</text><text class="rs" x="180" y="116" text-anchor="middle">slice commits, ATTEMPTS.json, RESUME.md</text>
+<rect class="rbx" x="30" y="154" width="300" height="44"/><text class="rt" x="180" y="174" text-anchor="middle">reopen: claude --continue</text><text class="rs" x="180" y="190" text-anchor="middle">SessionStart fires rehydrate.sh</text>
+<rect class="rbx" x="30" y="228" width="300" height="58"/><text class="rt" x="180" y="248" text-anchor="middle">BUILD INTERRUPTED</text><text class="rs" x="180" y="264" text-anchor="middle">the stale BUILDING is cleared, and FORGE STATE</text><text class="rs" x="180" y="278" text-anchor="middle">tells you to type /forge resume</text>
+<rect class="rbx" x="30" y="316" width="300" height="58"/><text class="rt" x="180" y="336" text-anchor="middle">/forge resume</text><text class="rs" x="180" y="352" text-anchor="middle">slices.mjs reads the ledger, and build.js</text><text class="rs" x="180" y="366" text-anchor="middle">relaunches at the right slice and rung</text>
 <line class="rf" x1="180" y1="50" x2="180" y2="76"/>
 <line class="rf" x1="180" y1="124" x2="180" y2="150"/>
 <line class="rf" x1="180" y1="198" x2="180" y2="224"/>
+<line class="rf" x1="180" y1="286" x2="180" y2="312"/>
 </svg>
-<figcaption>The recovery path. The one manual step: an armed goal is
-session-scoped, so after a fresh start you paste the /goal line again.
-rehydrate.sh prints it so you never hunt for it.</figcaption>
+<figcaption>The recovery path. The one manual step is typing
+<code>/forge resume</code>: a workflow dies with its session, and relaunching
+it is your opt-in for the new one. Compaction is different: the workflow is
+still running, <code>BUILDING</code> stays, and FORGE STATE says BUILD IN
+FLIGHT. Wait for the completion notice.</figcaption>
 </figure>
 
-<p>The exact recovery sequence when a rate limit lands mid-run: wait for the
-window, run <code>claude --continue</code> in the product repo, read the
-FORGE STATE block, and if it says <code>Gate active. If this is a fresh
-session, paste:</code> followed by a /goal line, paste that line. Nothing
-else. The run picks up from RESUME.md's next action without re-asking
-anything.</p>
+<p>The exact recovery sequence after a crash or a rate limit: when the window
+resets, run <code>claude --continue</code> in the product repo, read the
+FORGE STATE block, and if it shows <code>BUILD INTERRUPTED</code>, type
+<code>/forge resume</code>. Nothing else. Green slices are skipped, fail
+counts persist, and nothing is re-asked. If the block shows
+<code>PARKED</code>, the run is resting on the wait named there. If it shows
+<code>COMMITS BLOCKED</code>, git stopped working; section 10 has the fix.</p>
 
-<h2 id="patterns">8. The six workflow patterns</h2>
+<h2 id="patterns">8. The two workflows</h2>
 <p>A <a href="https://code.claude.com/docs/en/workflows">dynamic workflow</a>
-is a script that orchestrates many subagents at once; the four in
-<code>.claude/workflows/</code> run as slash commands. Only the lead runs
-them. Six patterns, mapped to the phases that use them:</p>
+is a script that spawns and coordinates agents with control flow in code.
+Forge keeps two in <code>.claude/workflows/</code>. Only the lead runs them,
+every <code>agent()</code> call pins its model and effort, and no workflow
+ever uses Fable.</p>
+
+<table>
+<tr><th>Workflow</th><th>Runs</th><th>Does</th></tr>
+<tr><td><code>build.js</code></td><td>on every armed run: after arming, after each re-slice, and on every <code>/forge resume</code></td><td>one builder per open slice, <code>gate.mjs</code> after each, the ladder in code, the milestone verifier after the core-loop slice, and the final verifier with one re-judge and one fix round. Its args come from <code>slices.mjs --open</code>; <code>fixIds</code> runs only a fix round and a final verify. It returns done, or halted with the slice and the reason</td></tr>
+<tr><td><code>design-directions.js</code></td><td>at DESIGN, opt-in: L goals, or M when the taste references pull in different directions</td><td>stratifies five design positions for this goal, generates one direction each in parallel, merges the best of all five into one, and iterates once. It never crowns a winner: merging plus one iteration beat picking the best</td></tr>
+</table>
+
+<p>Retired with v2: <code>verify-fanout.js</code>, one agent per rubric line,
+now done by <code>dod-check.mjs</code> running every check line from the
+armed commit; and <code>defect-sweep.js</code>, whose fixer bypassed the gate
+and the commit. The six-pattern map went with them. Before adding a workflow,
+read the workflows skill: add one only when control flow would otherwise run
+through the lead's turns, or when the items are independent and number ten
+or more.</p>
 
 <figure>
-<svg viewBox="0 0 360 320" role="img" aria-label="Six workflow patterns mapped to pipeline phases">
-<style>
- .pn{font:600 12.5px system-ui,sans-serif;fill:var(--ink);}
- .pp{font:600 11px ui-monospace,Menlo,monospace;fill:var(--accent);}
- .pd{font:11px system-ui,sans-serif;fill:var(--dim);}
- .pl{stroke:var(--line);stroke-width:1;}
-</style>
-<text class="pn" x="4" y="20">classify-and-act</text><text class="pp" x="250" y="20">SIZE, VERIFY</text><text class="pd" x="4" y="36">the router's letter; the escalation ladder routing by fail count</text>
-<line class="pl" x1="4" y1="48" x2="356" y2="48"/>
-<text class="pn" x="4" y="72">fan-out-and-synthesize</text><text class="pp" x="250" y="72">DESIGN, BUILD</text><text class="pd" x="4" y="88">parallel builders in worktrees on L, when scopes are disjoint</text>
-<line class="pl" x1="4" y1="100" x2="356" y2="100"/>
-<text class="pn" x="4" y="124">adversarial verification</text><text class="pp" x="250" y="124">VERIFY</text><text class="pd" x="4" y="140">the verifier seat; verify-fanout, one agent per rubric line on L</text>
-<line class="pl" x1="4" y1="152" x2="356" y2="152"/>
-<text class="pn" x="4" y="176">generate-and-merge</text><text class="pp" x="250" y="176">DESIGN</text><text class="pd" x="4" y="192">design-directions: five per-goal strata, merged into one</text>
-<line class="pl" x1="4" y1="204" x2="356" y2="204"/>
-<text class="pn" x="4" y="228">tournament</text><text class="pp" x="250" y="228">DESIGN</text><text class="pd" x="4" y="244">its second half: pairwise judging, compared never scored</text>
-<line class="pl" x1="4" y1="256" x2="356" y2="256"/>
-<text class="pn" x="4" y="280">loop until done</text><text class="pp" x="250" y="280">VERIFY</text><text class="pd" x="4" y="296">defect-sweep: rounds until a full sweep finds nothing new</text>
-</svg>
-<figcaption>S goals use no workflows. M uses the panel. L adds fan-out
-verification and, when the defect count is unknown, the sweep.</figcaption>
-</figure>
-
-<figure>
-<svg viewBox="0 0 360 250" role="img" aria-label="Sizing decision tree: what S, M, and L each skip">
+<svg viewBox="0 0 360 250" role="img" aria-label="Sizing decision tree: what S, M, and L each get">
 <defs><marker id="ar4" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#9a958a"/></marker></defs>
 <style>
  .sbx{fill:var(--panel);stroke:var(--line);rx:8;}
@@ -583,22 +686,23 @@ verification and, when the defect count is unknown, the sweep.</figcaption>
  .ssz{font:11px system-ui,sans-serif;fill:var(--dim);}
  .sf{stroke:#9a958a;stroke-width:1.5;fill:none;marker-end:url(#ar4);}
 </style>
-<rect class="sbx" x="105" y="6" width="150" height="40"/><text class="st" x="180" y="30" text-anchor="middle">router reads the brief</text>
-<rect class="sbx" x="4" y="96" width="110" height="118"/><text class="st" x="59" y="118" text-anchor="middle">S</text><text class="ssz" x="59" y="138" text-anchor="middle">one feature,</text><text class="ssz" x="59" y="152" text-anchor="middle">one evening</text><text class="ssz" x="59" y="176" text-anchor="middle">no scout, no panel,</text><text class="ssz" x="59" y="190" text-anchor="middle">no worktree, no workflows,</text><text class="ssz" x="59" y="204" text-anchor="middle">designer optional, deployed</text>
-<rect class="sbx" x="126" y="96" width="110" height="118"/><text class="st" x="181" y="118" text-anchor="middle">M</text><text class="ssz" x="181" y="138" text-anchor="middle">multi-screen,</text><text class="ssz" x="181" y="152" text-anchor="middle">one stack</text><text class="ssz" x="181" y="176" text-anchor="middle">scout, Actors grid,</text><text class="ssz" x="181" y="190" text-anchor="middle">designer, single</text><text class="ssz" x="181" y="204" text-anchor="middle">builder</text>
-<rect class="sbx" x="248" y="96" width="110" height="118"/><text class="st" x="303" y="118" text-anchor="middle">L</text><text class="ssz" x="303" y="138" text-anchor="middle">parallel streams</text><text class="ssz" x="303" y="162" text-anchor="middle">all of M, plus worktree</text><text class="ssz" x="303" y="176" text-anchor="middle">builders, verify-fanout,</text><text class="ssz" x="303" y="190" text-anchor="middle">defect-sweep, ultracode</text><text class="ssz" x="303" y="204" text-anchor="middle">session recommended</text>
+<rect class="sbx" x="105" y="6" width="150" height="40"/><text class="st" x="180" y="30" text-anchor="middle">the lead reads the brief</text>
+<rect class="sbx" x="4" y="96" width="110" height="118"/><text class="st" x="59" y="118" text-anchor="middle">S</text><text class="ssz" x="59" y="138" text-anchor="middle">one feature,</text><text class="ssz" x="59" y="152" text-anchor="middle">one evening</text><text class="ssz" x="59" y="176" text-anchor="middle">1 to 2 slices,</text><text class="ssz" x="59" y="190" text-anchor="middle">final verify only,</text><text class="ssz" x="59" y="204" text-anchor="middle">designer if deployed</text>
+<rect class="sbx" x="126" y="96" width="110" height="118"/><text class="st" x="181" y="118" text-anchor="middle">M</text><text class="ssz" x="181" y="138" text-anchor="middle">multi-screen,</text><text class="ssz" x="181" y="152" text-anchor="middle">one stack</text><text class="ssz" x="181" y="176" text-anchor="middle">scout, designer,</text><text class="ssz" x="181" y="190" text-anchor="middle">critic, milestone</text><text class="ssz" x="181" y="204" text-anchor="middle">and final verify</text>
+<rect class="sbx" x="248" y="96" width="110" height="118"/><text class="st" x="303" y="118" text-anchor="middle">L</text><text class="ssz" x="303" y="138" text-anchor="middle">parallel streams</text><text class="ssz" x="303" y="162" text-anchor="middle">all of M, plus</text><text class="ssz" x="303" y="176" text-anchor="middle">parallel builders,</text><text class="ssz" x="303" y="190" text-anchor="middle">design-directions,</text><text class="ssz" x="303" y="204" text-anchor="middle">Fable plan audit</text>
 <line class="sf" x1="120" y1="46" x2="65" y2="92"/>
 <line class="sf" x1="180" y1="46" x2="181" y2="92"/>
 <line class="sf" x1="240" y1="46" x2="297" y2="92"/>
-<text class="ssz" x="59" y="238" text-anchor="middle">one letter, one reason</text>
+<text class="ssz" x="59" y="238" text-anchor="middle">one line, one reason</text>
 </svg>
 <figcaption>Sizing decides everything downstream. Simple stays simple: an S
-goal never meets a panel, a worktree, or a workflow.</figcaption>
+goal never meets a scout, a worktree, or a workflow beyond build.</figcaption>
 </figure>
 
 <h2 id="unattended">9. A machine that stays up</h2>
-<p>A build phase on an M or L goal can run for hours. For a machine that
-must not sleep through it:</p>
+<p>A build on an M or L goal can run for hours, and the build workflow lives
+inside the session: a session that dies stops the build until you type
+<code>/forge resume</code>. For a machine that must not sleep through it:</p>
 <pre><code># keep the Mac awake while claude runs (ends when the command ends)
 caffeinate -dims claude
 
@@ -607,62 +711,98 @@ tmux new -s forge
 claude
 # detach: Ctrl+B then D    reattach later: tmux attach -t forge</code></pre>
 <p>Watching a run: open <code>.forge/PROGRESS.html</code> in any browser
-tab. It is a wallboard built to fill one screen with no scrolling: an
-overall completion estimate (gate work is 20 points, rubric lines the
-other 80, an evidence-recorded line counting half a verified one, and only
-shipping reads 100), the run duration and token total, the pipeline as a
-wired node graph with the slices under it, rubric health per section in
-three states (open, evidence recorded by the builder, verified by the
-verifier) plus the current slice's lines in play, the evidence and
-dispatch feeds, and the latest captures, each opening full size on a
-click. The hooks regenerate it after
-every subagent stop, checkpoint, and evidence line, and the page reloads
-itself every 15 seconds, so a screen left on it tracks the run with no
-server and no setup. It is drawn from the state files and never edited by
-hand; if the page and a file disagree, the file wins.</p>
+tab. It is a wallboard built to fill one screen with no scrolling: an overall
+completion estimate (gate work is 20 points, rubric lines the other 80, an
+evidence-recorded line counting half a verified one, and only a verified,
+reported run reads 100), the run duration and token total, the pipeline with
+the slices under it, rubric health per section, the evidence and dispatch
+feeds, and the latest captures. It is redrawn at every session end and every
+rate-limit checkpoint, and the page reloads itself every 15 seconds. During a
+long build, redraw it from a second terminal in the product repo with
+<code>node scripts/progress.mjs</code>. It is drawn from the state files and
+never edited by hand; if the page and a file disagree, the file wins.</p>
 <p>Checking on a run from your phone: if the repo pushes to GitHub, read
 <code>.forge/RESUME.md</code> and <code>.forge/RUNLOG.md</code> in the
 GitHub app. <code>GREENLIGHT.md</code> is written phone-sized for exactly
 this: read it, then approve from your desk, where the full rubric is in
 front of you.</p>
 <div class="warn"><strong>An unattended machine plus a broken ping is a
-silent failure.</strong> The desktop notification from
-<code>notify.sh</code> is the only signal that the gate is waiting or a
-permission prompt is stuck. Before leaving a run unattended, trigger a
-notification once and confirm you can hear or see it. If the machine will be
-truly unattended, check the run at intervals; a run parked at a prompt burns
-no tokens but makes no progress either.</div>
+silent failure.</strong> The desktop notification from <code>notify.sh</code>
+is the signal that the gate is waiting, a permission prompt is stuck, or the
+run has parked. It stays silent while <code>BUILDING</code> exists, because an
+idle lead is the design then. Before leaving a run unattended, trigger a
+notification once and confirm you can hear or see it. A run parked at a
+prompt burns no tokens but makes no progress either.</div>
 
 <h2 id="trouble">10. When things go wrong</h2>
 <table>
 <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
-<tr><td>The session announces it is done, but the gate keeps blocking, and
-after 8 blocks in a row it stops anyway</td><td>Rubric lines are unchecked.
-The platform overrides a Stop hook after 8 consecutive blocks; that valve
-is deliberate</td><td>Read the unchecked lines the gate printed. Real
-misses: keep building, or re-dispatch the verifier. State stays intact;
-<code>claude --continue</code> resumes the loop</td></tr>
-<tr><td>Verifier FAILs the same slice again and again</td><td>The slice
-misses the bar, or the rubric line needs a capability the environment lacks
-(a browser, a device)</td><td>The ladder is automatic: 2 FAILs raise the
-builder model, 3 send the slice to the architect. If a line is untestable
-in this environment, that is a re-plan conversation at the architect level;
-the line is never softened silently</td></tr>
+<tr><td>The gate blocks the session from stopping once, then the run stops
+and <code>.forge/PARKED</code> appears</td><td>Rubric lines are unchecked.
+The gate reminds once per stop attempt, then yields and records the park, so
+it can never livelock</td><td>Read PARKED and RESUME.md: they name the lines
+and the wait. Supply what is missing, then <code>claude --continue</code> and
+<code>/forge resume</code>. A park is never a PASS, and the gate stays
+armed</td></tr>
+<tr><td><code>.forge/COMMIT-BLOCKED</code> exists, or FORGE STATE shows
+COMMITS BLOCKED</td><td>git cannot run (on macOS, usually the unaccepted
+Xcode license), or a secret-looking path sits in the tree</td><td>Run
+<code>sudo xcodebuild -license accept</code>, or add the path to
+<code>.gitignore</code>, or, if it is genuinely committable, to
+<code>.forge/commit-allow</code>. The file clears on the next good commit.
+Until then nothing is being committed</td></tr>
+<tr><td><code>arm.sh</code> prints REFUSED after approval</td><td>git is not
+usable, so the rubric cannot be pinned</td><td>Fix git as above, then
+<code>/forge resume</code>. The greenlight is not re-opened</td></tr>
+<tr><td>A check or the gate reads UNKNOWN</td><td>Something could not run: a
+check exited with a code other than 0 or 1, playwright or axe-core is
+missing, a server never answered, or python3 is the macOS stub</td><td>UNKNOWN
+is never green and never a FAIL. The slice comes back blocked on a
+prerequisite. Fix the environment, not the line, then <code>/forge
+resume</code></td></tr>
+<tr><td>A slice comes back stuck</td><td>Three gate FAILs: the builder failed
+even on Opus 5.5 at high effort</td><td>Automatic. The lead calls the oracle
+if a stuck trigger holds and the cap allows; otherwise it rewinds to the
+slice's base, has the architect re-slice, and relaunches.
+<code>node scripts/attempt.mjs state &lt;slice&gt;</code> shows fails, base
+and rung. The line is never softened</td></tr>
+<tr><td>A slice comes back needs-reslice</td><td>Two partial hand-backs: the
+slice is too wide for one builder context</td><td>The architect re-slices it,
+with no oracle call</td></tr>
+<tr><td>You want to know why the oracle ran, or did not</td><td>Fable 5.1
+runs only on a recorded trigger. Plan audit: an L goal, a compliance trigger
+involving money, minors or special-category data, a stack off the defaults, or a slice marked
+<code>Confidence: low</code>. Stuck: a slice still failing after the
+Opus-high rung, or a line with two or more defects after a gate PASS</td><td>Every
+call is logged to RUNLOG.md with its trigger before it runs, and
+<code>cost.mjs</code> reports Fable spend on its own line. The cap is 3 per
+run unless you changed it at the greenlight; past it, a stuck slice rewinds
+instead. Never enable <code>/advisor</code></td></tr>
+<tr><td>Lines still open after the final verify</td><td>The workflow already
+re-judged once and fixed once</td><td>The lead relaunches with
+<code>fixIds</code> at most twice, then parks. Only you can accept a run
+below 100 per cent, and the lead records your words verbatim</td></tr>
+<tr><td>A seat ran on the wrong model</td><td>A dispatch passed a model, or a
+seat lost its pin</td><td><code>node scripts/cost.mjs --models</code> names
+it and exits 1; <code>seat-check.mjs</code> and the selftest check the
+pins</td></tr>
 <tr><td>Claude Design MCP not responding</td><td>Server down, or
 <code>/design-login</code> expired</td><td>Check <code>claude mcp
 list</code>, re-run <code>/design-login</code>. The designer's documented
 fallback: standalone HTML wireframes in <code>.forge/wireframes/</code>,
 noted in DESIGN.md. The run does not stall</td></tr>
-<tr><td>Rate limit mid-slice</td><td>Usage window exhausted;
-StopFailure fires</td><td>Nothing to save: checkpoint.sh already stamped
-RESUME.md. When the window resets, <code>claude --continue</code>, read
-FORGE STATE, re-paste the /goal line it shows. Section 7 has the full
+<tr><td>Rate limit mid-build</td><td>Usage window exhausted;
+StopFailure fires</td><td>Nothing to save: <code>checkpoint.sh</code>
+already stamped RESUME.md and committed. When the window resets,
+<code>claude --continue</code>, read FORGE STATE, and type <code>/forge
+resume</code> if it shows BUILD INTERRUPTED. Section 7 has the full
 path</td></tr>
 <tr><td>A workflow does not appear as a command, or errors on
 launch</td><td>Syntax drift, usually after a platform update</td><td>Run
-<code>scripts/selftest.sh</code>; it parses all four. The
-<code>meta</code> block must stay a pure literal, and the script body
-never touches the filesystem itself; agents do</td></tr>
+<code>bash scripts/selftest.sh</code>; it parses both workflows and simulates
+the build ladder. The <code>meta</code> block must stay a pure literal, and
+the script body never touches the filesystem itself; agents and the scripts
+they run do</td></tr>
 <tr><td>Hooks seem silent in a new clone</td><td>Scripts not executable,
 or the folder not yet trusted by Claude Code</td><td><code>chmod +x
 scripts/*.sh</code>, then open <code>claude</code> once interactively and
@@ -671,60 +811,77 @@ accept the trust prompt</td></tr>
 
 <h2 id="glossary">11. Glossary and customization</h2>
 <dl>
-<dt>Lead</dt><dd>the main Claude Code session driving a forge run.</dd>
-<dt>Seat</dt><dd>one of the eight forge subagents, each with a mandate and never-rules.</dd>
+<dt>Lead</dt><dd>the main Claude Code session driving a forge run. It sizes, holds the gate, launches the build workflow, and ships.</dd>
+<dt>Seat</dt><dd>one of the seven seats in <code>.claude/agents/</code>, each with a mandate, a pinned model and effort, and never-rules.</dd>
+<dt>Oracle</dt><dd>the Fable 5.1 seat. Read-only, called only on a trigger listed at the greenlight, at most 3 times per run, never through <code>/advisor</code>.</dd>
 <dt>Context window</dt><dd>a session's finite working memory; everything read or produced accumulates there.</dd>
 <dt>Hook</dt><dd>a script the platform runs at a lifecycle point; exit 2 can block the action.</dd>
 <dt>Skill</dt><dd>knowledge loaded on demand; costs no context until used.</dd>
 <dt>MCP server</dt><dd>an external tool connection; forge uses claude-design.</dd>
-<dt>Workflow</dt><dd>a script that orchestrates many subagents; runs as a slash command.</dd>
+<dt>Workflow</dt><dd>a script that runs agents with control flow in code. Forge has two, build and design-directions, and only the lead launches them.</dd>
 <dt>Worktree</dt><dd>an isolated copy of the repo so parallel builders never collide (L goals).</dd>
-<dt>Slice</dt><dd>one vertical piece of the plan, crossing every layer, independently verifiable.</dd>
+<dt>Slice</dt><dd>one vertical piece of the plan, crossing every layer, sized for one builder dispatch. Marked standard or light, and closes a named set of rubric lines.</dd>
 <dt>Rubric, DoD</dt><dd>the Definition of Done in DOD.md; every line a checkbox with proof behind it.</dd>
-<dt>Evidence</dt><dd>a recorded command output, URL, or screenshot path in EVIDENCE.md; the only currency the verifier accepts.</dd>
-<dt>Greenlight</dt><dd>the one human gate: plan, rubric, and screens approved together, once.</dd>
-<dt>Arm, /goal</dt><dd>the native completion condition you paste at approval; a fresh model re-checks it after every turn.</dd>
-<dt>Ultracode</dt><dd>a session mode where Claude orchestrates workflows by default; reserved for L builds.</dd>
+<dt>check, judge, operator</dt><dd>the three kinds of rubric line: a command that exits 0 for pass and 1 for fail, a ruling by the verifier against a stated threshold, and a proof only you can supply. Judge lines are budgeted at S 8, M 25, L 50.</dd>
+<dt>V0</dt><dd>the last rubric line, <code>final verifier PASS</code>. Only <code>dod-check.mjs --rule</code> ticks it, and only when every other line holds. The Stop gate never releases before it.</dd>
+<dt>UNKNOWN</dt><dd>could not run. Never green and never a FAIL; it routes to a prerequisite rather than up the ladder.</dd>
+<dt>Gate</dt><dd><code>gate.mjs</code>, the per-slice check: pinned typecheck, lint and tests, the slice's check lines, and a suppression scan. Minutes, not hours.</dd>
+<dt>Ladder</dt><dd>what happens on gate FAILs: retry with the output, then Opus 5.5 high, then stuck. The count lives in <code>.forge/ATTEMPTS.json</code>.</dd>
+<dt>Evidence</dt><dd>a recorded command output, URL, or capture id in EVIDENCE.md; the only currency the verifier accepts.</dd>
+<dt>Greenlight</dt><dd>the one human gate: plan, rubric, pre-flight and screens approved together, once, in plan mode.</dd>
+<dt>Arm</dt><dd><code>arm.sh</code> commits the approved rubric and writes its sha to ARMED. Every check runs from that commit, so the bar cannot be edited after approval. An amendment re-arms with a reason.</dd>
+<dt>BUILDING</dt><dd>the marker the lead writes before launching build.js. While it exists the Stop gate and the ping stand down; a fresh session clears it and asks for <code>/forge resume</code>.</dd>
+<dt>Park</dt><dd>a run resting on a named wait, recorded in PARKED. Not a question, not a failure, never a softened line.</dd>
+<dt>Milestone</dt><dd>the one slice on M and L that completes the core loop. The verifier runs after it, not after every slice.</dd>
 <dt>Actors grid</dt><dd>BRIEF.md's table of actor-job pairs. Replaces the role census and the persona panel. Every cell carries a provenance tag, and only the assumed ones reach you at the gate.</dd>
 <dt>Band, stage</dt><dd>two separate proficiency axes on an actor row. Band is PIAAC digital skill, where Level 3 is five per cent of adults; stage is Dreyfus domain expertise. A Level 3 domain novice needs a different interface from a Level 1 domain expert, which is why they never collapse into one number.</dd>
-<dt>LOUD, QUIET</dt><dd>the one element on a route that should pull the eye, and the region that goes quiet to pay for it. Declared in SCREENS.md so the blind critic can be wrong about it.</dd>
+<dt>LOUD, QUIET</dt><dd>the one element on a route that should pull the eye, and the region that goes quiet to pay for it. Declared in SCREENS.md so the blind design-critic can be wrong about it.</dd>
 <dt>Squint</dt><dd>a capture reduced until only mass and contrast survive. A card-soup screen collapses into an undifferentiated grid; unblurred, the same screen reads as clean and modern to a model.</dd>
-<dt>Capture triple</dt><dd>what every capture writes: the frame, an element tree with computed styles, and a meta with the command, the pins and a sha256. Seats pass ids, never bytes.</dd>
-<dt>Anchor</dt><dd>the check that a page actually painted before anything about it is judged. A blank mount ruled on as a design difference produces confident prose about a screen that never existed.</dd>
-<dt>Holdout</dt><dd>the verifier's acceptance suite, written at the greenlight and never shown to the builder. Adding more visible tests measurably widens the gap it exists to close.</dd>
+<dt>Capture triple</dt><dd>what every <code>capture.sh</code> call writes: the frame, an element tree with computed styles, and a meta with the command, the pins and a sha256. Seats pass ids, never bytes.</dd>
+<dt>Anchor</dt><dd>the check that a page actually painted before anything about it is judged. A failed anchor records UNKNOWN, never a ruling on a blank frame.</dd>
+<dt>Holdout</dt><dd>the verifier's acceptance suite, written before the greenlight and never shown to the builder. Adding more visible tests measurably widens the gap it exists to close.</dd>
 <dt>Drift</dt><dd>the gap between this harness and the copy a project is running. One target ran a 601-byte Stop gate against a 3,947-byte original.</dd>
 </dl>
 
 <h3>The commands worth knowing</h3>
 <table class="cmds"><tbody>
-<tr><td><code>bash scripts/selftest.sh</code></td><td>the regression suite, 173 assertions. Run it after every Claude Code update.</td></tr>
-<tr><td><code>node scripts/seat-check.mjs</code></td><td>every seat's prose against its tool grant. It once caught a blind critic holding Bash, which made it blind by request rather than by grant.</td></tr>
-<tr><td><code>node scripts/cost.mjs --all</code></td><td>per-seat cost, round-trips and peak context, read from transcripts that already exist.</td></tr>
-<tr><td><code>node scripts/manifest.mjs check &lt;target&gt;</code></td><td>which harness a project is actually running. Never reports clean while anything differs.</td></tr>
-<tr><td><code>bash scripts/attempt.sh state &lt;slice&gt;</code></td><td>how many times a slice has failed and which rung that puts it on.</td></tr>
+<tr><td><code>bash scripts/selftest.sh</code></td><td>the regression suite. Run it after every Claude Code update.</td></tr>
+<tr><td><code>node scripts/seat-check.mjs</code></td><td>every seat's prose against its tool grant and pins. It once caught a blind critic holding Bash, which made it blind by request rather than by grant.</td></tr>
+<tr><td><code>node scripts/cost.mjs --all</code></td><td>per-seat cost, round-trips and peak context, read from transcripts that already exist. Each API call counted once, workflow agents included, Fable on its own line.</td></tr>
+<tr><td><code>node scripts/cost.mjs --models</code></td><td>the models each seat actually ran against its declared pin. Exits 1 on an override.</td></tr>
+<tr><td><code>node scripts/manifest.mjs check &lt;target&gt;</code></td><td>which harness a project is actually running, orphaned files included. Never reports clean while anything differs.</td></tr>
+<tr><td><code>node scripts/dod-check.mjs --show &lt;ID&gt;</code></td><td>the armed text of a rubric line. <code>--lint --size M</code> checks format and the judge budget.</td></tr>
+<tr><td><code>node scripts/slices.mjs</code></td><td>every slice with its ledger state. Read-only.</td></tr>
+<tr><td><code>node scripts/attempt.mjs state &lt;slice&gt;</code></td><td>how many times a slice has failed, its base commit, and which rung that puts it on.</td></tr>
 <tr><td><code>bash scripts/capture.sh &lt;id&gt; &lt;url&gt;</code></td><td>one capture, three files. Add <code>--platform ios|android|engine</code> off the web.</td></tr>
+<tr><td><code>scripts/preflight.sh</code></td><td>what you still have to install, create or authorise. Reports, never gates.</td></tr>
 </tbody></table>
 
 <h3>Which file to edit for which change</h3>
 <table>
 <tr><th>You want to change</th><th>Edit</th></tr>
-<tr><td>The pipeline itself: phases, gate, escalation ladder</td><td>.claude/commands/forge.md</td></tr>
-<tr><td>A seat's mandate, model, tools, or never-rules</td><td>.claude/agents/&lt;seat&gt;.md</td></tr>
-<tr><td>The quality bar every rubric draws from</td><td>.claude/skills/standards/SKILL.md</td></tr>
-<tr><td>Rubric mechanics: sections, disqualifiers, banned words</td><td>the rubric rules inside .claude/agents/architect.md</td></tr>
+<tr><td>The pipeline itself: phases, gate, what the lead does on each return</td><td>.claude/commands/forge.md</td></tr>
+<tr><td>A seat's mandate, model, effort, tools, or never-rules</td><td>.claude/agents/&lt;seat&gt;.md, then run seat-check.mjs</td></tr>
+<tr><td>Build and verify control flow: the ladder, the milestone, the fix round</td><td>.claude/workflows/build.js</td></tr>
+<tr><td>What the per-slice gate runs</td><td>scripts/gate.mjs</td></tr>
+<tr><td>The quality bar, the rubric line format, check exit codes, the craft suite</td><td>.claude/skills/standards/SKILL.md</td></tr>
+<tr><td>Rubric mechanics: sections, the judge budget, banned words, V0</td><td>the DOD.md rules inside .claude/agents/architect.md</td></tr>
 <tr><td>Stack defaults per goal category</td><td>.claude/skills/stack-picker/SKILL.md</td></tr>
 <tr><td>Deploy runbooks</td><td>.claude/skills/ship/SKILL.md</td></tr>
 <tr><td>Launch asset checklist</td><td>.claude/skills/launch-kit/SKILL.md</td></tr>
 <tr><td>Design process and Claude Design runbook</td><td>.claude/skills/design/SKILL.md</td></tr>
 <tr><td>Legal triggers and the dated horizon</td><td>.claude/skills/compliance/SKILL.md</td></tr>
 <tr><td>What a hook enforces</td><td>scripts/&lt;hook&gt;.sh, wiring in .claude/settings.json</td></tr>
-<tr><td>Fan-out behavior</td><td>.claude/workflows/&lt;pattern&gt;.js</td></tr>
+<tr><td>Effort level and plugins inside forge projects</td><td>.claude/settings.json</td></tr>
+<tr><td>Adding a workflow</td><td>read .claude/skills/workflows/SKILL.md first</td></tr>
+<tr><td>Why a rule exists</td><td>docs/RATIONALE.md</td></tr>
 </table>
 <p>One file is yours to write and nobody else's:
-<strong>.claude/skills/standards/SKILL.md</strong> holds three empty slots
-marked in comments. They are your personal rules, your taste in writing.
-Every future rubric inherits whatever you put there. Fill them before the
-first real run.</p>
+<strong>.claude/skills/standards/SKILL.md</strong> holds three personal-rule
+slots, written as comments under "Personal rules". They currently carry value
+before the wall, motion calibrated to the category, and text that is designed
+rather than filled in. Every future rubric inherits whatever is there, so
+rewrite them where your taste differs before the first real run.</p>
 
 </main>
 </body>

@@ -9,7 +9,9 @@
 # 314 paths in one lump. The lead's slice commits are the real history; this is
 # the net underneath them, so a crash costs minutes rather than a day.
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
-git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+# It is also the PostToolUse hook on every edit, so outside a forge project it
+# must do nothing at all: no git call, no commit in someone else's repo.
+[ -d .forge ] || exit 0
 
 NOW=0
 [ "$1" = "--now" ] && { NOW=1; shift; }
@@ -18,16 +20,37 @@ WINDOW=${FORGE_COMMIT_WINDOW:-600}
 # A worded value made `[ -lt ]` exit 2, the `&& exit 0` never fired, and the
 # throttle failed open: a commit per hook call, and run one had 1126 of them.
 case "$WINDOW" in ''|*[!0-9]*) WINDOW=600 ;; esac
-STAMP="$(git rev-parse --git-dir)/forge-last-commit"
+# Kept inside .git so the stamp never dirties the tree it is throttling; a
+# worktree has a .git file instead of a directory and falls back to .forge.
+STAMP=.git/forge-last-commit; [ -d .git ] || STAMP=.forge/.last-commit
 
-# Nothing staged, nothing changed, nothing to say.
-[ -z "$(git status --porcelain 2>/dev/null)" ] && exit 0
-
+# The throttle is read before git is touched, because this runs on every edit
+# and inside the window the answer is already known.
 if [ "$NOW" -eq 0 ] && [ -f "$STAMP" ]; then
   LAST=$(cat "$STAMP" 2>/dev/null)
   case "$LAST" in ''|*[!0-9]*) LAST=0 ;; esac
   [ $(( $(date +%s) - LAST )) -lt "$WINDOW" ] && exit 0
 fi
+
+# Three states. Not a repo is a choice and stays silent. Git that cannot run
+# (a blocked Xcode license exits 69) is a broken safety net, and saying nothing
+# about it is how a run once committed nothing for days.
+GD=$(git rev-parse --git-dir 2>&1); RC=$?
+if [ "$RC" -ne 0 ]; then
+  case "$GD" in
+    *"not a git repository"*) exit 0 ;;
+  esac
+  {
+    printf 'commit blocked %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'git cannot run, so nothing is being committed:\n  %s\n' "$(printf '%s' "$GD" | head -1)"
+    printf 'On macOS this is usually the Xcode license: sudo xcodebuild -license accept\n'
+  } > .forge/COMMIT-BLOCKED 2>/dev/null
+  echo "forge commit: BLOCKED, git cannot run. See .forge/COMMIT-BLOCKED." >&2
+  exit 0
+fi
+
+# Nothing staged, nothing changed, nothing to say.
+[ -z "$(git status --porcelain 2>/dev/null)" ] && exit 0
 
 # .gitignore already covers .env and .env.*, and guard.sh blocks moving secret
 # files. This is the third lock: a secret must never reach a commit.

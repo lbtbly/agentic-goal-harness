@@ -6,6 +6,7 @@
       "Bash(git log:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
+      "Bash(git rev-parse:*)",
       "Bash(pnpm:*)",
       "Bash(npm:*)",
       "Bash(npx:*)",
@@ -18,8 +19,10 @@
       "Bash(bash scripts/*.sh:*)"
     ]
   },
-  "env": {
-    "FORGE_CHECKS_DEBOUNCE": "120"
+  "effortLevel": "high",
+  "enabledPlugins": {
+    "impeccable@impeccable": false,
+    "superpowers@claude-plugins-official": false
   },
   "subagentPromptCacheTtl": "1h",
   "hooks": {
@@ -40,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PROJECT_DIR}/scripts/checks.sh\""
+            "command": "\"${CLAUDE_PROJECT_DIR}/scripts/commit.sh\""
           }
         ]
       }

@@ -15,6 +15,11 @@ HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
 [ -f .forge/ARMED ] || exit 0
 [ -f .forge/DOD.md ] || exit 0
+# A build workflow is running in the background. The lead is idle by design
+# and will be woken by its completion, so there is nothing to push it toward.
+# rehydrate.sh clears a BUILDING left by a dead session, so this cannot hold a
+# fresh session open.
+[ -f .forge/BUILDING ] && exit 0
 
 # grep -c PRINTS the count and EXITS 1 when nothing matches, so a `|| echo N`
 # fallback appends a second line and the arithmetic below dies on "0\n0". Keep
@@ -80,7 +85,8 @@ rm -f .forge/PARKED
 {
   echo "forge gate: $LEFT rubric line(s) unchecked. Not done. Next unchecked:"
   grep '^- \[ \]' .forge/DOD.md | head -5
-  echo "Continue the run: build, verify, record evidence. Never soften a line."
+  echo "Continue the run: relaunch the build workflow for open slices, or verify."
+  echo "V0 closes only through the final verifier. Never soften a line."
   echo "Nothing left to do? Stop again and the gate yields, recording the park."
 } >&2
 exit 2

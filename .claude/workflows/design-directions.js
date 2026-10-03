@@ -24,7 +24,7 @@
 export const meta = {
   name: 'design-directions',
   description: 'Generate five per-goal design directions, merge the best of all five, iterate once',
-  whenToUse: 'DESIGN phase on M and L goals when no direction is obviously right',
+  whenToUse: 'DESIGN phase, opt-in: L goals, or M when the taste references pull in different directions',
   phases: [
     { title: 'Stratify', detail: 'five semantic strata for THIS goal' },
     { title: 'Generate', detail: 'one direction per stratum, in parallel' },
@@ -87,6 +87,9 @@ const MERGE_SCHEMA = {
   },
 }
 
+// Pinned, never inherited: a session on xhigh or on Fable must not leak into
+// five parallel generators.
+const OPUS = 'claude-opus-5-5'
 const goal = (args && args.goal) || 'the goal in .forge/BRIEF.md'
 const brief = (args && args.brief) || '.forge/BRIEF.md'
 
@@ -102,7 +105,7 @@ Name five design directions that are genuinely DIFFERENT POSITIONS for THIS prod
 Do not produce the generic set. "Minimal", "bold", "playful", "data-first" and "warm" are the same five directions every product gets, and five agents given them return five variations of one idea. Ground each stratum in something specific to this goal: its objects, its actors' jobs, its incumbent, the situation the actor is in when they arrive.
 
 Return exactly five.`,
-  { label: 'stratify', phase: 'Stratify', schema: STRATA_SCHEMA, effort: 'high' }
+  { label: 'stratify', phase: 'Stratify', schema: STRATA_SCHEMA, model: OPUS, effort: 'high' }
 )
 
 log(`strata: ${strata.map(s => s.name).join(' / ')}`)
@@ -125,7 +128,7 @@ You must describe three things concretely, because a direction that only describ
 - the list or table of the primary object, naming which attribute is rank 1 and which two support it
 
 Design for the actors in the grid: their bands, their stages, their situations. A row at band 1 or below cannot be given a flow that spans surfaces.`,
-    { label: `direction:${s.name}`, phase: 'Generate', schema: DIRECTION_SCHEMA }
+    { label: `direction:${s.name}`, phase: 'Generate', schema: DIRECTION_SCHEMA, model: OPUS, effort: 'medium' }
   )
 ))).filter(Boolean)
 
@@ -143,7 +146,7 @@ This is a merge, not a pick and not a collage. Take the strongest element from e
 The failure to avoid has a name: assembling a design from parts of several agents' output ranked LAST of twelve topologies measured, for token starvation and what the authors called the Frankenstein effect. The defence is coherence: this must read as one design somebody decided, not as five designs stapled together. If two elements cannot live in the same product, take one and say so in the omission.
 
 Name the ONE element that pulls the eye first on the primary screen, and what goes quiet to pay for it.`,
-  { label: 'merge', phase: 'Merge', schema: MERGE_SCHEMA, effort: 'high' }
+  { label: 'merge', phase: 'Merge', schema: MERGE_SCHEMA, model: OPUS, effort: 'high' }
 )
 
 log(`merged: ${merged.name}, from ${merged.provenance.length} contributions`)
@@ -164,7 +167,7 @@ Run exactly ONE iteration pass on it. Sharpen what is vague, cut what is decorat
 Then write the result to .forge/DESIGN.md under "## Direction", followed by a "### Provenance" table with one row per contribution: element, source direction, why it won that slot. Record the omissions too.
 
 State the v1 to v2 diff in three lines at the end: what changed, what was cut, what was kept against pressure.`,
-  { label: 'iterate', phase: 'Iterate', effort: 'high' }
+  { label: 'iterate', phase: 'Iterate', model: OPUS, effort: 'high' }
 )
 
 return { strata, directions: directions.map(d => d.name), merged: merged.name, provenance: merged.provenance, final }

@@ -14,6 +14,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const DIR = process.argv[2] || '.claude/agents'
+const MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-fable-5-1'])
 
 // Each rule: a signal in the prose, and the tools any one of which satisfies it.
 // Patterns are deliberately high-precision. A rule that fires on prose the seat
@@ -31,7 +32,7 @@ const RULES = [
   // a bare mention flagged a seat that correctly has no Bash. Require a verb
   // that puts the script in the seat's own hands.
   { need: ['Bash'], why: 'runs a harness script',
-    re: /\b(?:Run|run|Call|call|invoke|execute|with|via|using)\s+`?scripts\/[a-z-]+\.(?:sh|mjs)\b/ },
+    re: /\b(?:Run|run|Call|call|invoke|execute|with|via|using)\s+`?(?:node\s+|bash\s+)?scripts\/[a-z-]+\.(?:sh|mjs)\b/ },
   { need: ['Bash'], why: 'runs a shell command',
     re: /^\s*(?:\d+\.\s*)?(?:Run|run) `(?:npm|pnpm|npx|git|vercel|eas|node)\b/m },
   { need: ['WebSearch', 'WebFetch'], why: 'researches the open web',
@@ -73,6 +74,23 @@ for (const f of readdirSync(DIR).filter(f => f.endsWith('.md')).sort()) {
     console.log(`FAIL ${f}: prose ${r.why}, tools grant none of ${r.need.join('/')}`)
     console.log(`     prose: ${m[0].replace(/\s+/g, ' ').trim().slice(0, 72)}`)
     console.log(`     tools: ${[...have].join(', ')}`)
+  }
+
+  // Every seat pins an exact model and an effort. `inherit` let the session's
+  // xhigh, or a session on Fable, leak into every dispatch, and an alias moves
+  // under you when a model ships. Fable is the oracle's alone.
+  const mm = /^model:\s*(\S+)\s*$/m.exec(fm)
+  if (!mm || !MODELS.has(mm[1])) {
+    bad++
+    console.log(`FAIL ${f}: model ${mm ? mm[1] : 'missing'}; pin one of ${[...MODELS].join(', ')}`)
+  } else if (mm[1] === 'claude-fable-5-1' && f !== 'oracle.md') {
+    bad++
+    console.log(`FAIL ${f}: Fable is reserved for the oracle seat`)
+  }
+  const ef = /^effort:\s*(\S+)\s*$/m.exec(fm)
+  if (!ef || !['low', 'medium', 'high'].includes(ef[1])) {
+    bad++
+    console.log(`FAIL ${f}: effort ${ef ? ef[1] : 'missing'}; pin low, medium or high (xhigh costs 2.5x high for about 1.4 points)`)
   }
 
   // A turn ceiling that truncates produces a silently incomplete result, which

@@ -11,8 +11,8 @@ fresh () {
   cd /tmp && rm -rf ./mtest && mkdir -p mtest/scripts mtest/.claude/agents
   # The real damage, reproduced: a gate stub, a missing script, a local edit.
   printf '#!/usr/bin/env bash\n# stub\nexit 0\n' > mtest/scripts/dod-gate.sh
-  cp "$H/.claude/agents/router.md" mtest/.claude/agents/router.md
-  printf '\n# a local edit\n' >> mtest/.claude/agents/router.md
+  cp "$H/.claude/agents/builder.md" mtest/.claude/agents/builder.md
+  printf '\n# a local edit\n' >> mtest/.claude/agents/builder.md
 }
 
 echo "--- a first install is never reported clean ---"

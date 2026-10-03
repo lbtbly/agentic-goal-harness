@@ -1,57 +1,31 @@
 ---
 name: workflows
-description: The six dynamic workflow patterns and where each one belongs in the forge pipeline. Read before creating any workflow.
+description: The two forge workflows, what each is for, and the rules for adding one. Read before creating or changing any workflow.
 ---
 
 # Workflows
 
-Dynamic workflows are JavaScript files that spawn and coordinate subagents,
-choosing each agent's model and whether it runs in its own worktree. They exist
-to beat three failure modes that a single context window cannot: agentic
-laziness (stopping at partial progress), self-preferential bias (grading your
-own work), and goal drift (losing constraints across compaction). Those three
-are exactly what a Forge run must survive.
+A workflow is a JavaScript file that spawns and coordinates agents with control flow in code. Forge uses one for a single reason: work whose control flow should not live in the lead's context. A loop the lead runs turn by turn grows the lead's context on every pass. A loop in a script costs the lead one launch and one summary.
 
-Only the lead runs workflows. The platform now allows subagents to spawn
-subagents to a depth limit, but no forge seat carries the Agent tool, so every
-fan-out belongs to the lead. That is a design rule, not a platform accident.
+Only the lead runs workflows. No seat carries the Agent tool.
 
-## The six patterns, mapped
+## The two
 
-1. **Classify-and-act.** Route by task type. Forge: the router sizes S, M, or L
-   at phase 2, and the escalation ladder routes a slice by fail count. Also
-   available as intelligence routing: classify a slice, then pick its model.
-2. **Fan-out-and-synthesize.** Split, run an agent per step, merge at a barrier.
-   Forge: persona-panel.js at DESIGN, parallel builders across worktrees on L.
-3. **Adversarial verification.** A separate agent checks each output against a
-   rubric. Forge: the verifier seat, and verify-fanout.js one agent per rubric
-   line on L.
-4. **Generate-and-filter.** Produce many candidates, filter by rubric, dedupe,
-   return only what survives. Forge: design-tournament.js at DESIGN, and any
-   time the answer is taste based.
-5. **Tournament.** N agents attempt the same task differently, then pairwise
-   judging picks a winner. Comparative judgment beats absolute scoring. Forge:
-   the second half of design-tournament.js, and naming or copy decisions.
-6. **Loop until done.** Keep spawning until a stop condition, not a fixed number
-   of passes. Forge: defect-sweep.js at VERIFY, looping until a sweep returns no
-   new defects.
+**build** (`.claude/workflows/build.js`), on every armed run. One builder per open slice, then the deterministic gate (`scripts/gate.mjs`), with the escalation ladder in code:
+- FAIL 1: a retry with the gate output.
+- FAIL 2: the builder on Opus at high effort.
+- FAIL 3: stuck, which goes back to the lead.
 
-## Rules of use
+It runs the milestone verifier after the core-loop slice and the final verifier after the last slice. A failed judge line is re-judged once in a fresh context, then gets one fix round.
 
-- Match the pattern to the phase, never all six to one goal. Most traditional
-  coding tasks do not need a panel of five reviewers.
-- S goals use no workflows at all. M uses the panel. L adds fan-out verification
-  and may use the sweep.
-- Quick workflows are legitimate: a two-agent adversarial check on one
-  assumption is a workflow.
-- Set a token budget in the prompt when a workflow could sprawl, for example
-  "use 20k tokens" for a panel.
-- Pair with the armed /goal for a hard completion requirement. Pair with /loop
-  only for recurring work like triage, never for a one-shot build. Never on
-  the greenlight; the gate is never automated.
-- Ultracode opts a session into workflow orchestration: the ultracode keyword
-  in a prompt for one task, or /effort ultracode for the session. Use it to
-  open L-sized build sessions; skip it for S and M.
-- Save a good workflow from the /workflows view by pressing s; it lands in
-  .claude/workflows/ (project) or ~/.claude/workflows (personal) and runs as
-  a slash command. The four shipped here are already saved project workflows.
+The lead launches it in the background with `node scripts/slices.mjs --open` as args. The ladder's count lives on disk, so a relaunch resumes at the right rung. `args.fixIds` runs a fix round and a final verify only.
+
+**design-directions** (`.claude/workflows/design-directions.js`), opt-in on L, or on M when the taste references pull in different directions. It stratifies five positions for this goal, generates one direction each, merges the best of all five into one, and iterates once. It never crowns a winner.
+
+## Rules for adding one
+
+- Add a workflow only when control flow would otherwise run through the lead's turns, or when items are independent and numerous (ten or more). Otherwise a single dispatch is cheaper.
+- Pin `model` and `effort` on every `agent()` call. Use Opus 5.5 for judgment and building, and Sonnet 5.5 at low effort for running a script and reporting its output. Never inherit, and never use Fable.
+- Keep deterministic work in scripts and let agents run them. A script cannot read files, so the lead passes state in `args`.
+- Never cap coverage silently. If a workflow bounds its work, it logs what it dropped.
+- Never on the greenlight. The gate is never automated, and no /loop runs a build.
